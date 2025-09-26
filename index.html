@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Yantrabhasha Online Compiler</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="header">
+        <div class="logo">🚀 Yantrabhasha Online Compiler</div>
+        <div class="controls">
+            <div class="examples-dropdown">
+                <button class="examples-btn" onclick="toggleExamples()">📁 Examples</button>
+                <div class="examples-menu" id="examplesMenu">
+                    <div class="example-item" onclick="loadExample('hello')">Hello World</div>
+                    <div class="example-item" onclick="loadExample('addition')">Addition Program</div>
+                    <div class="example-item" onclick="loadExample('conditional')">Conditional Statement</div>
+                    <div class="example-item" onclick="loadExample('loop')">Loop Example</div>
+                </div>
+            </div>
+            <button class="run-btn" onclick="runCode()">▶️ Run</button>
+            <div class="status" id="status">Ready</div>
+        </div>
+    </div>
+
+    <div class="main-container">
+        <div class="left-panel">
+            <div class="panel-header">
+                📝 Code Editor
+            </div>
+            <textarea id="codeEditor" placeholder="// Write your Yantrabhasha code here...
+// Example:
+PADAM message:VARTTAI = &quot;Hello World&quot;;
+CHATIMPU(message);"></textarea>
+        </div>
+
+        <div class="right-panel">
+            <div class="panel-header">
+                📋 Output & Results
+            </div>
+            <div class="stats-bar">
+                <div class="stat-item">
+                    <span class="line-count">📄</span>
+                    <span>Lines: <span id="lineCount">0</span></span>
+                </div>
+                <div class="stat-item">
+                    <span class="error-count">❌</span>
+                    <span>Errors: <span id="errorCount">0</span></span>
+                </div>
+                <div class="stat-item">
+                    <span class="warning-count">⚠️</span>
+                    <span>Warnings: <span id="warningCount">0</span></span>
+                </div>
+            </div>
+            <div class="output-tabs">
+                <div class="tab active" data-tab="validation" onclick="switchTab('validation')">Validation</div>
+                <div class="tab" data-tab="variables" onclick="switchTab('variables')">Variables</div>
+                <div class="tab" data-tab="console" onclick="switchTab('console')">Console</div>
+            </div>
+            <div class="output-content">
+                <div id="validationOutput" class="tab-content active"></div>
+                <div id="variablesOutput" class="tab-content" style="display: none;"></div>
+                <div id="consoleOutput" class="tab-content" style="display: none;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="validator.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
