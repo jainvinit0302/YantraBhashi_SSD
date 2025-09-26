@@ -1,7 +1,7 @@
 //console.log("hello");
 
 const scopeStack=[new Map()];
-const bracketStack_if=[];
+const bracketStack=[];
 ////////////////////////////////////////////////////////////////////////
 function tokenize(input,del){
 
@@ -117,7 +117,7 @@ const padamRegex = /^\s*PADAM\s+(?<variable>[a-zA-Z_]\w*)\s*:\s*(?<type>ANKHE|VA
 }
 ///////////////////////////////////////////////////////////////////////////////
 
-function validateCheppu(line, lookupFn) {
+function validateCheppu(line) {
     const trimmedLine = line.trim();
 
    
@@ -139,7 +139,7 @@ function validateCheppu(line, lookupFn) {
     const { variable } = match.groups;
 
   
-    const variableInfo = lookupFn(variable);
+    const variableInfo = lookup(variable);
     
     if (variableInfo === null) {
         return {
@@ -268,7 +268,7 @@ function validateChatimpu(line) {
 //////////////////////////////////////////////////////////////////////////////////
 
 
-function validateElaitheHeader(line, lookupFn) {
+function validateElaitheHeader(line) {
     const trimmedLine = line.trim();
 
     if (!trimmedLine.startsWith('ELAITHE')) {
@@ -288,7 +288,7 @@ function validateElaitheHeader(line, lookupFn) {
         }
 
        
-        const variableInfo = lookupFn(expr);
+        const variableInfo = lookup(expr);
         if (variableInfo) {
             return { success: true, type: variableInfo.type };
         }
@@ -370,6 +370,88 @@ function validateBlockEnd(line) {
         error: "Malformed block-closing statement. Expected ']' or '] ALAITHE ['."
     };
 }
+///////////////////////////////////////////////////////////////////////////////
+
+function validateMalliMalliHeader(line,) {
+    const trimmedLine = line.trim();
+
+    if (!trimmedLine.startsWith('MALLI-MALLI')) {
+        return { status: 'NOT_MALLI_MALLI' };
+    }
+
+   
+    const mainRegex = /^\s*MALLI-MALLI\s*\((?<content>.*)\)\s*\[\s*$/;
+    const mainMatch = trimmedLine.match(mainRegex);
+
+    if (!mainMatch) {
+        return { status: 'INVALID_SYNTAX', error: "Malformed MALLI-MALLI structure. Expected: MALLI-MALLI (...) [" };
+    }
+
+    const parts = mainMatch.groups.content.split(';').map(p => p.trim());
+    if (parts.length !== 3) {
+        return { status: 'INVALID_SYNTAX', error: "MALLI-MALLI loop requires three parts: initialization; condition; update." };
+    }
+    
+   
+    const initPart = parts[0];
+    const padamRegex = /^\s*PADAM\s+(?<variable>[a-zA-Z_]\w*)\s*:\s*(?<type>ANKHE)\s*=\s*(?<value>\d+)\s*$/;
+    const initMatch = initPart.match(padamRegex);
+
+    if (!initMatch) {
+        return { status: 'SEMANTIC_ERROR', error: "Loop initialization must be a PADAM statement initializing an ANKHE variable (e.g., PADAM i:ANKHE = 0)." };
+    }
+    
+    const loopVarInfo = initMatch.groups;
+    const loopVariableName = loopVarInfo.variable;
+
+ 
+    const internalLookup = (varName) => {
+        if (varName === loopVariableName) {
+            return { type: 'ANKHE' }; 
+        }
+        return lookup(varName); 
+    };
+
+    
+    const determineType = (expr) => {
+        if (/^\d+$/.test(expr.trim())) return { success: true, type: 'ANKHE' };
+        const result = internalLookup(expr.trim());
+        if (result) return { success: true, type: result.type };
+        return { success: false, error: `Undeclared variable '${expr}' in loop condition.` };
+    };
+
+    
+    const condPart = parts[1];
+    const condRegex = /^\s*(?<op1>\S+)\s*(?<op>==|!=|<=|>=|<|>)\s*(?<op2>\S+)\s*$/;
+    const condMatch = condPart.match(condRegex);
+    if (!condMatch) return { status: 'INVALID_SYNTAX', error: `Malformed loop condition: "${condPart}".` };
+    
+    const op1Result = determineType(condMatch.groups.op1);
+    const op2Result = determineType(condMatch.groups.op2);
+    if (!op1Result.success) return { status: 'SEMANTIC_ERROR', error: op1Result.error };
+    if (!op2Result.success) return { status: 'SEMANTIC_ERROR', error: op2Result.error };
+    if (op1Result.type !== 'ANKHE' || op2Result.type !== 'ANKHE') {
+        return { status: 'SEMANTIC_ERROR', error: `Loop condition must compare two ANKHE types.` };
+    }
+
+    
+    const updatePart = parts[2];
+    const updateRegex = /^\s*(?<lhs>\S+)\s*=\s*(?<rhs>\S+)\s*([+-])\s*1\s*$/;
+    const updateMatch = updatePart.match(updateRegex);
+    if (!updateMatch || updateMatch.groups.lhs !== loopVariableName || updateMatch.groups.rhs !== loopVariableName) {
+        return { status: 'SEMANTIC_ERROR', error: `Loop update must be of the form '${loopVariableName} = ${loopVariableName} + 1'.` };
+    }
+
+  
+    return { 
+        status: 'VALID',
+        data: {
+            variable: loopVarInfo.variable,
+            type: loopVarInfo.type,
+            value: loopVarInfo.value
+        }
+    };
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 function ece_cmd(command){
@@ -442,22 +524,78 @@ function ece_cmd(command){
               if(bracketStack.length==0){
                 return {status:"Error",type:"NO_OPEN_["}
               }
+             
                exitScope();
                if(result5.data.type=="end_with_else"){
-                  enterScope();
+                 enterScope();
+                  if(bracketStack.length === 0 || bracketStack[bracketStack.length - 1] !==1){
+                     bracketStack.pop();
+                     bracketStack.push(2);
+                    
+                      return {status:"Error",type:"NO_ELAITHE_BEFORE_ALAITHE"};
+                  }
+                    bracketStack.push(2);
+                  
+               }
+               else{
+                    bracketStack.pop();
                }
                return {status:"next"};
          }
          else if(result5.status=="SEMANTIC_ERROR"){
                return {status:"Error"};
          }
-     /////////////////////////////////////////////////////
-   
 
+     ///////////////////////////////////////////////////////////////////////
 
+     const result6=validateMalliMalliHeader(command);
+
+     if(result6.status=="VALID"){
+           enterScope();
+           declare(result6.data.variable, { 
+            type: result6.data.type, 
+            value: result6.data.value 
+        });
+        bracketStack.push(3);
+        return {status:"next",result6};
+      }
+     else if(result6.status=="SEMANTIC_ERROR"){
+               return {status:"Error"};
+         }
+    /////////////////////////////////////////////////////////////////////
+
+     return {status:"Error"};
            
 
 }
+let program=`PADAM username:VARTTAI;|CHEPPU(username);|ELAITHE (username == "Anirudh") [|CHATIMPU("Welcome Anirudh!");|
+              ] ALAITHE [|CHATIMPU("Access Denied!");|]`; 
+
+let program1=`PADAM x:ANKHE = 5;|ELAITHE (x > 0) [|CHATIMPU("positive");|
+               MALLI-MALLI (PADAM i:ANKHE = 1; i < 3; i = i + 1) [|CHATIMPU(i);|]`
+
+
+token=tokenize(program1,'|');
+
+function valid_entire(token){
+    //enterScope();
+        let flag=true;    
+        for(let i=0;i<token.length;i++){
+            result=ece_cmd(token[i]);
+            if(result.status=="Error"){
+                console.log(i);
+                flag=false;
+            }
+            //console.log(scopeStack.length);
+        }
+        if(scopeStack.length!=1){
+            flag=false;
+            console.log("here");
+        }
+        return flag;
+}
+console.log(valid_entire(token));
+
 
 // const V=validatePadam("PADAM a:ANKHE=10;");
 //                 declare(V.data.variable, { 
@@ -469,8 +607,9 @@ function ece_cmd(command){
 
 //////////////////////////////////////////////////////////////////////
 // Assume 'lookup' and 'declare' functions exist.
-
-console.log()
+// console.log(ece_cmd("ELAITHE(1==1)["));
+// console.log(ece_cmd("]ALAITHE["));
+//console.log(ece_cmd("MALLI-MALLI (PADAM i:ANKHE = 1; i <= 10; i = i + 1) ["));
 
 
 
