@@ -116,11 +116,22 @@ function renderValidationResults(errors, warnings) {
     }
 
     errors.forEach(err => {
-        const errDiv = document.createElement('div');
-        errDiv.className = 'output-line error';
-        errDiv.textContent = `Line ${err.line}: ${err.message}`;
-        outputEl.appendChild(errDiv);
-    });
+    const errDiv = document.createElement('div');
+    errDiv.className = 'output-line error';
+    errDiv.textContent = `Line ${err.line}: ${err.message}`;
+    outputEl.appendChild(errDiv);
+    
+    if (err.recommendation) {
+      const recDiv = document.createElement('div');
+      recDiv.className = 'output-line recommendation';
+      recDiv.style.marginLeft = '20px';
+      recDiv.style.fontStyle = 'italic';
+      recDiv.style.color = '#ffcc00';
+      recDiv.textContent = `→ Recommendation: ${err.recommendation}`;
+      outputEl.appendChild(recDiv);
+    }
+});
+
 
     warnings.forEach(warn => {
         const warnDiv = document.createElement('div');

@@ -16,11 +16,6 @@ class YantraBhashaValidator {
         this.currentLine = 0;
     }
 
-    /**
-     * Main validation method
-     * @param {string} code - The Yantrabhasha code to validate
-     * @returns {object} Validation results
-     */
     validate(code) {
         this.reset();
         const lines = code.split('\n');
@@ -29,7 +24,6 @@ class YantraBhashaValidator {
             this.currentLine = i + 1;
             const line = lines[i].trim();
             
-            // Skip empty lines and comments
             if (line === '' || line.startsWith('#')) continue;
             
             this.validateLine(line);
@@ -43,9 +37,6 @@ class YantraBhashaValidator {
         };
     }
 
-    /**
-     * Reset validator state
-     */
     reset() {
         this.variables.clear();
         this.errors = [];
@@ -54,10 +45,6 @@ class YantraBhashaValidator {
         this.currentLine = 0;
     }
 
-    /**
-     * Validate a single line of code
-     * @param {string} line - Line to validate
-     */
     validateLine(line) {
         const cleanLine = line.endsWith(';') ? line.slice(0, -1) : line;
         
@@ -76,23 +63,23 @@ class YantraBhashaValidator {
         } else if (cleanLine === ']' || cleanLine === '] ALAITHE [') {
             // Block endings are valid
         } else if (cleanLine !== '') {
-            this.addError(`Unknown statement: ${line}`);
+            this.addError(
+                `Unknown statement: ${line}`,
+                'Check the syntax and ensure the statement follows Yantrabhasha rules.'
+            );
         }
     }
 
-    /**
-     * Check if line is a variable declaration
-     */
     isVariableDeclaration(line) {
         return line.startsWith('PADAM ') && line.includes(':');
     }
 
-    /**
-     * Validate variable declaration syntax and semantics
-     */
     validateVariableDeclaration(line) {
         if (!line.endsWith(';')) {
-            this.addError('Variable declaration must end with semicolon');
+            this.addError(
+                'Variable declaration must end with semicolon',
+                'Add a semicolon ";" at the end of the variable declaration.'
+            );
             return;
         }
 
@@ -100,30 +87,35 @@ class YantraBhashaValidator {
         const match = cleanLine.match(/PADAM\s+(\w+):(ANKHE|VARTTAI)(?:\s*=\s*(.+))?/);
         
         if (!match) {
-            this.addError('Invalid variable declaration syntax');
+            this.addError(
+                'Invalid variable declaration syntax',
+                'Use syntax: PADAM variableName:TYPE [= value]; with TYPE as ANKHE or VARTTAI.'
+            );
             return;
         }
 
         const [, varName, type, value] = match;
 
-        // Check reserved words
         if (this.reservedWords.includes(varName)) {
-            this.addError(`Cannot use reserved word '${varName}' as variable name`);
+            this.addError(
+                `Cannot use reserved word '${varName}' as variable name`,
+                'Change the variable name to something not reserved.'
+            );
             return;
         }
 
-        // Check identifier format
         if (!/^[a-zA-Z][a-zA-Z0-9_]*$/.test(varName)) {
-            this.addError(`Invalid variable name '${varName}'. Must start with letter and contain only letters, digits, and underscores`);
+            this.addError(
+                `Invalid variable name '${varName}'. Must start with letter and contain only letters, digits, and underscores`,
+                'Rename the variable to start with a letter and allow letters, digits, or underscores only.'
+            );
             return;
         }
 
-        // Check for redeclaration
         if (this.variables.has(varName)) {
             this.addWarning(`Variable '${varName}' already declared`);
         }
 
-        // Store variable
         this.variables.set(varName, type);
 
         // Validate initial value if provided
@@ -132,45 +124,42 @@ class YantraBhashaValidator {
         }
     }
 
-    /**
-     * Validate value assignment based on type
-     */
     validateValue(value, expectedType, varName) {
         value = value.trim();
         
         if (expectedType === 'ANKHE') {
             if (!/^-?\d+$/.test(value) && !this.isExpression(value)) {
-                this.addError(`Invalid integer value for variable '${varName}': ${value}`);
+                this.addError(
+                    `Invalid integer value for variable '${varName}': ${value}`,
+                    'Assign only integer values or valid integer expressions to ANKHE variables.'
+                );
             }
         } else if (expectedType === 'VARTTAI') {
             if (!value.startsWith('"') || !value.endsWith('"')) {
-                this.addError(`String value must be enclosed in quotes for variable '${varName}': ${value}`);
+                this.addError(
+                    `String value must be enclosed in quotes for variable '${varName}': ${value}`,
+                    'Enclose string values in double quotes, e.g. "Hello".'
+                );
             }
         }
     }
 
-    /**
-     * Check if value is a valid expression
-     */
     isExpression(value) {
         const variables = Array.from(this.variables.keys()).join('|');
         const regex = new RegExp(`^[\\w\\s\\+\\-\\*\\/\\(\\)${variables}]+$`);
         return regex.test(value);
     }
 
-    /**
-     * Check if line is an assignment
-     */
     isAssignment(line) {
         return /^\w+\s*=\s*.+/.test(line) && !line.startsWith('PADAM');
     }
 
-    /**
-     * Validate assignment statement
-     */
     validateAssignment(line) {
         if (!line.endsWith(';')) {
-            this.addError('Assignment must end with semicolon');
+            this.addError(
+                'Assignment must end with semicolon',
+                'Add a semicolon ";" at the end of assignment statements.'
+            );
             return;
         }
 
@@ -178,15 +167,20 @@ class YantraBhashaValidator {
         const match = cleanLine.match(/^(\w+)\s*=\s*(.+)$/);
         
         if (!match) {
-            this.addError('Invalid assignment syntax');
+            this.addError(
+                'Invalid assignment syntax',
+                'Use syntax: variableName = expression;'
+            );
             return;
         }
 
         const [, varName, value] = match;
 
-        // Check if variable is declared
         if (!this.variables.has(varName)) {
-            this.addError(`Variable '${varName}' used before declaration`);
+            this.addError(
+                `Variable '${varName}' used before declaration`,
+                `Declare the variable '${varName}' before assigning a value.`
+            );
             return;
         }
 
@@ -194,21 +188,18 @@ class YantraBhashaValidator {
         this.validateValue(value, varType, varName);
     }
 
-    /**
-     * Check if line is a conditional statement
-     */
     isConditional(line) {
         return line.startsWith('ELAITHE ');
     }
 
-    /**
-     * Validate conditional statement
-     */
     validateConditional(line) {
         const match = line.match(/ELAITHE\s*\((.+?)\)\s*\[/);
         
         if (!match) {
-            this.addError('Invalid conditional syntax. Use: ELAITHE (condition) [');
+            this.addError(
+                'Invalid conditional syntax. Use: ELAITHE (condition) [',
+                'Make sure conditionals follow syntax: ELAITHE (condition) [ ... ]'
+            );
             return;
         }
 
@@ -216,9 +207,6 @@ class YantraBhashaValidator {
         this.validateCondition(condition);
     }
 
-    /**
-     * Validate condition expression
-     */
     validateCondition(condition) {
         const operators = ['==', '!=', '<=', '>=', '<', '>'];
         let foundOperator = false;
@@ -229,7 +217,10 @@ class YantraBhashaValidator {
                 const parts = condition.split(op);
                 
                 if (parts.length !== 2) {
-                    this.addError(`Invalid condition: ${condition}`);
+                    this.addError(
+                        `Invalid condition: ${condition}`,
+                        'Conditions must have exactly two operands.'
+                    );
                     return;
                 }
 
@@ -240,12 +231,17 @@ class YantraBhashaValidator {
                     } else if (/^-?\d+$/.test(part)) {
                         // Integer literal - valid
                     } else if (/^[a-zA-Z]\w*$/.test(part)) {
-                        // Variable - check if declared
                         if (!this.variables.has(part)) {
-                            this.addError(`Variable '${part}' used in condition before declaration`);
+                            this.addError(
+                                `Variable '${part}' used in condition before declaration`,
+                                `Declare variable '${part}' before using it in conditions.`
+                            );
                         }
                     } else {
-                        this.addError(`Invalid operand in condition: ${part}`);
+                        this.addError(
+                            `Invalid operand in condition: ${part}`,
+                            'Operands must be declared variables, integer literals, or string literals in quotes.'
+                        );
                     }
                 });
                 break;
@@ -253,25 +249,25 @@ class YantraBhashaValidator {
         }
 
         if (!foundOperator) {
-            this.addError(`Condition must use comparison operators (==, !=, <, >, <=, >=): ${condition}`);
+            this.addError(
+                `Condition must use comparison operators (==, !=, <, >, <=, >=): ${condition}`,
+                'Use one of the supported comparison operators in conditions.'
+            );
         }
     }
 
-    /**
-     * Check if line is a loop statement
-     */
     isLoop(line) {
         return line.startsWith('MALLI-MALLI ');
     }
 
-    /**
-     * Validate loop statement
-     */
     validateLoop(line) {
         const match = line.match(/MALLI-MALLI\s*\((.+?)\)\s*\[/);
         
         if (!match) {
-            this.addError('Invalid loop syntax. Use: MALLI-MALLI (initialization; condition; update) [');
+            this.addError(
+                'Invalid loop syntax. Use: MALLI-MALLI (initialization; condition; update) [',
+                'Ensure loops have initialization, condition, and update parts separated by semicolons and followed by "[".'
+            );
             return;
         }
 
@@ -279,54 +275,56 @@ class YantraBhashaValidator {
         const parts = loopParams.split(';');
         
         if (parts.length !== 3) {
-            this.addError('Loop must have three parts: initialization; condition; update');
+            this.addError(
+                'Loop must have three parts: initialization; condition; update',
+                'Provide exactly three parts separated by semicolons within the loop parentheses.'
+            );
             return;
         }
 
-        // Validate initialization
         const init = parts[0].trim();
         if (init.startsWith('PADAM ')) {
             this.validateVariableDeclaration(init + ';');
         }
 
-        // Validate condition
         const condition = parts[1].trim();
         this.validateCondition(condition);
 
-        // Validate update
         const update = parts[2].trim();
         if (!this.isAssignment(update)) {
-            this.addError('Loop update must be an assignment');
+            this.addError(
+                'Loop update must be an assignment',
+                'The update part of the loop should be an assignment statement, e.g., i = i + 1.'
+            );
         }
     }
 
-    /**
-     * Check if line is a print statement
-     */
     isPrint(line) {
         return line.startsWith('CHATIMPU(');
     }
 
-    /**
-     * Validate print statement
-     */
     validatePrint(line) {
         if (!line.endsWith(';')) {
-            this.addError('CHATIMPU statement must end with semicolon');
+            this.addError(
+                'CHATIMPU statement must end with semicolon',
+                'Add a semicolon ";" at the end of CHATIMPU statements.'
+            );
             return;
         }
 
         const match = line.match(/CHATIMPU\((.+?)\);/);
         
         if (!match) {
-            this.addError('Invalid CHATIMPU syntax');
+            this.addError(
+                'Invalid CHATIMPU syntax',
+                'Use syntax: CHATIMPU(expression);'
+            );
             return;
         }
 
         const arg = match[1].trim();
         
         if (arg.startsWith('"') && arg.endsWith('"')) {
-            // String literal
             const output = arg.slice(1, -1);
             this.consoleOutput.push({ 
                 type: 'output', 
@@ -334,9 +332,11 @@ class YantraBhashaValidator {
                 line: this.currentLine 
             });
         } else if (/^[a-zA-Z]\w*$/.test(arg)) {
-            // Variable
             if (!this.variables.has(arg)) {
-                this.addError(`Variable '${arg}' used in CHATIMPU before declaration`);
+                this.addError(
+                    `Variable '${arg}' used in CHATIMPU before declaration`,
+                    `Declare variable '${arg}' before using it in CHATIMPU statements.`
+                );
             } else {
                 this.consoleOutput.push({ 
                     type: 'output', 
@@ -345,37 +345,43 @@ class YantraBhashaValidator {
                 });
             }
         } else {
-            this.addError(`Invalid argument for CHATIMPU: ${arg}`);
+            this.addError(
+                `Invalid argument for CHATIMPU: ${arg}`,
+                'Print statements accept either a string in quotes or a single variable name.'
+            );
         }
     }
 
-    /**
-     * Check if line is a scan statement
-     */
     isScan(line) {
         return line.startsWith('CHEPPU(');
     }
 
-    /**
-     * Validate scan statement
-     */
     validateScan(line) {
         if (!line.endsWith(';')) {
-            this.addError('CHEPPU statement must end with semicolon');
+            this.addError(
+                'CHEPPU statement must end with semicolon',
+                'Add a semicolon ";" at the end of CHEPPU statements.'
+            );
             return;
         }
 
         const match = line.match(/CHEPPU\((\w+)\);/);
         
         if (!match) {
-            this.addError('Invalid CHEPPU syntax');
+            this.addError(
+                'Invalid CHEPPU syntax',
+                'Use syntax: CHEPPU(variableName);'
+            );
             return;
         }
 
         const varName = match[1];
         
         if (!this.variables.has(varName)) {
-            this.addError(`Variable '${varName}' used in CHEPPU before declaration`);
+            this.addError(
+                `Variable '${varName}' used in CHEPPU before declaration`,
+                `Declare variable '${varName}' before using it in CHEPPU.`
+            );
         } else {
             this.consoleOutput.push({ 
                 type: 'input', 
@@ -385,20 +391,15 @@ class YantraBhashaValidator {
         }
     }
 
-    /**
-     * Add an error to the error list
-     */
-    addError(message) {
+    addError(message, recommendation = '') {
         this.errors.push({ 
             line: this.currentLine, 
             message, 
+            recommendation,
             type: 'error' 
         });
     }
 
-    /**
-     * Add a warning to the warning list
-     */
     addWarning(message) {
         this.warnings.push({ 
             line: this.currentLine, 
