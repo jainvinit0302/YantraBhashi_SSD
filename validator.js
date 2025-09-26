@@ -6,6 +6,7 @@
 class YantraBhashaValidator {
     constructor() {
         this.variables = new Map();
+        this.variablesValues = new Map();  // Track variable values here
         this.errors = [];
         this.warnings = [];
         this.consoleOutput = [];
@@ -39,6 +40,7 @@ class YantraBhashaValidator {
 
     reset() {
         this.variables.clear();
+        this.variablesValues.clear();
         this.errors = [];
         this.warnings = [];
         this.consoleOutput = [];
@@ -118,15 +120,28 @@ class YantraBhashaValidator {
 
         this.variables.set(varName, type);
 
-        // Validate initial value if provided
         if (value) {
             this.validateValue(value, type, varName);
+
+            // Store initial value after trimming quotes if VARTTAI
+            if (type === 'ANKHE') {
+                const intVal = parseInt(value.trim());
+                if (!isNaN(intVal)) {
+                    this.variablesValues.set(varName, intVal);
+                } else {
+                    this.variablesValues.set(varName, value.trim()); // store expression as-is
+                }
+            } else if (type === 'VARTTAI') {
+                this.variablesValues.set(varName, value.trim().slice(1, -1));
+            }
+        } else {
+            this.variablesValues.set(varName, undefined);
         }
     }
 
     validateValue(value, expectedType, varName) {
         value = value.trim();
-        
+
         if (expectedType === 'ANKHE') {
             if (!/^-?\d+$/.test(value) && !this.isExpression(value)) {
                 this.addError(
@@ -165,7 +180,7 @@ class YantraBhashaValidator {
 
         const cleanLine = line.slice(0, -1);
         const match = cleanLine.match(/^(\w+)\s*=\s*(.+)$/);
-        
+
         if (!match) {
             this.addError(
                 'Invalid assignment syntax',
@@ -186,6 +201,24 @@ class YantraBhashaValidator {
 
         const varType = this.variables.get(varName);
         this.validateValue(value, varType, varName);
+
+        const valTrimmed = value.trim();
+
+        // Store assigned value if obvious literal
+        if (varType === 'ANKHE') {
+            const intVal = parseInt(valTrimmed);
+            if (!isNaN(intVal)) {
+                this.variablesValues.set(varName, intVal);
+            } else {
+                this.variablesValues.set(varName, valTrimmed); 
+            }
+        } else if (varType === 'VARTTAI') {
+            if (valTrimmed.startsWith('"') && valTrimmed.endsWith('"')) {
+                this.variablesValues.set(varName, valTrimmed.slice(1, -1));
+            } else {
+                this.variablesValues.set(varName, undefined);
+            }
+        }
     }
 
     isConditional(line) {
@@ -194,7 +227,7 @@ class YantraBhashaValidator {
 
     validateConditional(line) {
         const match = line.match(/ELAITHE\s*\((.+?)\)\s*\[/);
-        
+
         if (!match) {
             this.addError(
                 'Invalid conditional syntax. Use: ELAITHE (condition) [',
@@ -210,12 +243,12 @@ class YantraBhashaValidator {
     validateCondition(condition) {
         const operators = ['==', '!=', '<=', '>=', '<', '>'];
         let foundOperator = false;
-        
+
         for (const op of operators) {
             if (condition.includes(op)) {
                 foundOperator = true;
                 const parts = condition.split(op);
-                
+
                 if (parts.length !== 2) {
                     this.addError(
                         `Invalid condition: ${condition}`,
@@ -262,7 +295,7 @@ class YantraBhashaValidator {
 
     validateLoop(line) {
         const match = line.match(/MALLI-MALLI\s*\((.+?)\)\s*\[/);
-        
+
         if (!match) {
             this.addError(
                 'Invalid loop syntax. Use: MALLI-MALLI (initialization; condition; update) [',
@@ -273,7 +306,7 @@ class YantraBhashaValidator {
 
         const loopParams = match[1];
         const parts = loopParams.split(';');
-        
+
         if (parts.length !== 3) {
             this.addError(
                 'Loop must have three parts: initialization; condition; update',
@@ -313,7 +346,7 @@ class YantraBhashaValidator {
         }
 
         const match = line.match(/CHATIMPU\((.+?)\);/);
-        
+
         if (!match) {
             this.addError(
                 'Invalid CHATIMPU syntax',
@@ -323,13 +356,13 @@ class YantraBhashaValidator {
         }
 
         const arg = match[1].trim();
-        
+
         if (arg.startsWith('"') && arg.endsWith('"')) {
             const output = arg.slice(1, -1);
-            this.consoleOutput.push({ 
-                type: 'output', 
-                value: output, 
-                line: this.currentLine 
+            this.consoleOutput.push({
+                type: 'output',
+                value: output,
+                line: this.currentLine
             });
         } else if (/^[a-zA-Z]\w*$/.test(arg)) {
             if (!this.variables.has(arg)) {
@@ -338,10 +371,11 @@ class YantraBhashaValidator {
                     `Declare variable '${arg}' before using it in CHATIMPU statements.`
                 );
             } else {
-                this.consoleOutput.push({ 
-                    type: 'output', 
-                    value: `[${arg}]`, 
-                    line: this.currentLine 
+                const val = this.variablesValues.get(arg);
+                this.consoleOutput.push({
+                    type: 'output',
+                    value: val !== undefined ? val : `[${arg}]`,
+                    line: this.currentLine
                 });
             }
         } else {
@@ -366,7 +400,7 @@ class YantraBhashaValidator {
         }
 
         const match = line.match(/CHEPPU\((\w+)\);/);
-        
+
         if (!match) {
             this.addError(
                 'Invalid CHEPPU syntax',
@@ -376,35 +410,35 @@ class YantraBhashaValidator {
         }
 
         const varName = match[1];
-        
+
         if (!this.variables.has(varName)) {
             this.addError(
                 `Variable '${varName}' used in CHEPPU before declaration`,
                 `Declare variable '${varName}' before using it in CHEPPU.`
             );
         } else {
-            this.consoleOutput.push({ 
-                type: 'input', 
-                value: `Input required for ${varName}`, 
-                line: this.currentLine 
+            this.consoleOutput.push({
+                type: 'input',
+                value: `Input required for ${varName}`,
+                line: this.currentLine
             });
         }
     }
 
     addError(message, recommendation = '') {
-        this.errors.push({ 
-            line: this.currentLine, 
-            message, 
+        this.errors.push({
+            line: this.currentLine,
+            message,
             recommendation,
-            type: 'error' 
+            type: 'error'
         });
     }
 
     addWarning(message) {
-        this.warnings.push({ 
-            line: this.currentLine, 
-            message, 
-            type: 'warning' 
+        this.warnings.push({
+            line: this.currentLine,
+            message,
+            type: 'warning'
         });
     }
 }

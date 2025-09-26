@@ -107,11 +107,12 @@ function renderValidationResults(errors, warnings) {
     const outputEl = document.getElementById('validationOutput');
     outputEl.innerHTML = '';
 
-    if (errors.length === 0 && warnings.length === 0) {
+     if (errors.length === 0 && warnings.length === 0) {
         const successMsg = document.createElement('div');
         successMsg.className = 'output-line success';
         successMsg.textContent = 'No errors or warnings found. Code is valid!';
         outputEl.appendChild(successMsg);
+        // Do not hide console output here
         return;
     }
 
