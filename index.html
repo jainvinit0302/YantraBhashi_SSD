@@ -1,72 +1,79 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Yantrabhasha Online Compiler</title>
-    <link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8" />
+  <title>Yantrabhasha Auth</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css"/>
 </head>
 <body>
-    <div class="header">
-        <div class="logo">🚀 Yantrabhasha Online Compiler</div>
-        <div class="controls">
-            <div class="examples-dropdown">
-                <button class="examples-btn" onclick="toggleExamples()">📁 Examples</button>
-                <div class="examples-menu" id="examplesMenu">
-                    <div class="example-item" onclick="loadExample('hello')">Hello World</div>
-                    <div class="example-item" onclick="loadExample('addition')">Addition Program</div>
-                    <div class="example-item" onclick="loadExample('conditional')">Conditional Statement</div>
-                    <div class="example-item" onclick="loadExample('loop')">Loop Example</div>
-                </div>
-            </div>
-            <button class="run-btn" onclick="runCode()">▶️ Run</button>
-            <div class="status" id="status">Ready</div>
+  <div class="auth-container">
+    <!-- Login Card -->
+    <div class="auth-card" id="loginCard">
+      <div class="avatar">
+        <i class="fa fa-user"></i>
+      </div>
+      <h2>LOGIN</h2>
+      <form id="loginForm" autocomplete="off">
+        <div class="input-row">
+          <i class="fa fa-user"></i>
+          <input type="text" id="loginUsername" placeholder="Username" required />
         </div>
+        <div class="input-row">
+          <i class="fa fa-lock"></i>
+          <input type="password" id="loginPassword" placeholder="Password" required />
+        </div>
+        <div class="options-row">
+          <label><input type="checkbox" id="rememberMe" /> Remember me</label>
+        </div>
+        <button type="submit" class="main-btn">LOGIN</button>
+        <p class="small-link"><a href="#">Forgot Username / Password?</a></p>
+        <p class="small-link">
+          Don't have an account? <a href="#" onclick="showSignup()">Sign up here</a>
+        </p>
+        <p id="loginError" class="error-msg"></p>
+      </form>
     </div>
 
-    <div class="main-container">
-        <div class="left-panel">
-            <div class="panel-header">
-                📝 Code Editor
-            </div>
-            <textarea id="codeEditor" placeholder="// Write your Yantrabhasha code here...
-// Example:
-PADAM message:VARTTAI = &quot;Hello World&quot;;
-CHATIMPU(message);"></textarea>
+    <!-- Signup Card -->
+    <div class="auth-card" id="signupCard" style="display:none;">
+      <h2>SIGN UP</h2>
+      <form id="signupForm" autocomplete="off">
+        <div class="input-row">
+          <i class="fa fa-user"></i>
+          <input type="text" id="signupUsername" placeholder="Username" required />
         </div>
-
-        <div class="right-panel">
-            <div class="panel-header">
-                📋 Output & Results
-            </div>
-            <div class="stats-bar">
-                <div class="stat-item">
-                    <span class="line-count">📄</span>
-                    <span>Lines: <span id="lineCount">0</span></span>
-                </div>
-                <div class="stat-item">
-                    <span class="error-count">❌</span>
-                    <span>Errors: <span id="errorCount">0</span></span>
-                </div>
-                <div class="stat-item">
-                    <span class="warning-count">⚠️</span>
-                    <span>Warnings: <span id="warningCount">0</span></span>
-                </div>
-            </div>
-            <div class="output-tabs">
-                <div class="tab active" data-tab="validation" onclick="switchTab('validation')">Validation</div>
-                <div class="tab" data-tab="variables" onclick="switchTab('variables')">Variables</div>
-                <div class="tab" data-tab="console" onclick="switchTab('console')">Console</div>
-            </div>
-            <div class="output-content">
-                <div id="validationOutput" class="tab-content active"></div>
-                <div id="variablesOutput" class="tab-content" style="display: none;"></div>
-                <div id="consoleOutput" class="tab-content" style="display: none;"></div>
-            </div>
+        <div class="input-row">
+          <i class="fa fa-envelope"></i>
+          <input type="email" id="signupEmail" placeholder="E-mail" required />
         </div>
+        <div class="input-row">
+          <i class="fa fa-lock"></i>
+          <input type="password" id="signupPassword" placeholder="Password" required />
+        </div>
+        <div class="input-row">
+          <i class="fa fa-lock"></i>
+          <input type="password" id="signupPassword2" placeholder="Confirm Password" required />
+        </div>
+        <button type="submit" class="main-btn">CREATE ACCOUNT</button>
+        <p class="small-link">
+          Already have an account? <a href="#" onclick="showLogin()">Login here</a>
+        </p>
+        <p id="signupError" class="error-msg"></p>
+      </form>
     </div>
-
-    <script src="validator.js"></script>
-    <script src="app.js"></script>
+  </div>
+  <script>
+    function showSignup() {
+      document.getElementById('loginCard').style.display = 'none';
+      document.getElementById('signupCard').style.display = 'block';
+    }
+    function showLogin() {
+      document.getElementById('signupCard').style.display = 'none';
+      document.getElementById('loginCard').style.display = 'block';
+    }
+    // You can add form submission JS here...
+  </script>
 </body>
 </html>

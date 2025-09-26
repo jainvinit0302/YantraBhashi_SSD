@@ -1,15 +1,11 @@
 // app.js
 
-// Assume YantraBhashaValidator class and validator.js is loaded before this script
-
-// Global reference to the validator instance
+// Your existing examples and validator instance
 const validator = new YantraBhashaValidator();
 
-// Example code snippets for the dropdown loader
 const examples = {
     hello: `PADAM message:VARTTAI = "Hello World";
 CHATIMPU(message);`,
-
     addition: `PADAM a:ANKHE;
 PADAM b:ANKHE;
 PADAM sum:ANKHE = 0;
@@ -18,7 +14,6 @@ CHEPPU(b);
 sum = a + b;
 CHATIMPU("The Sum is:");
 CHATIMPU(sum);`,
-
     conditional: `PADAM username:VARTTAI;
 CHEPPU(username);
 ELAITHE (username == "Anirudh") [
@@ -26,7 +21,6 @@ CHATIMPU("Welcome Anirudh!");
 ] ALAITHE [
 CHATIMPU("Access Denied!");
 ]`,
-
     loop: `PADAM i:ANKHE;
 PADAM sum:ANKHE = 0;
 MALLI-MALLI (PADAM i:ANKHE = 1; i <= 10; i = i + 1) [
@@ -36,189 +30,138 @@ CHATIMPU("Sum of first 10 numbers is:");
 CHATIMPU(sum);`
 };
 
-// Toggle the examples dropdown menu visibility
-function toggleExamples() {
-    const menu = document.getElementById('examplesMenu');
-    menu.classList.toggle('show');
+// Auth state variables
+let authToken = localStorage.getItem('authToken') || null;
+let authUser = JSON.parse(localStorage.getItem('authUser')) || null;
+
+// Containers
+const loginContainer = document.getElementById('loginContainer');
+const mainContainer = document.getElementById('main-container');
+
+// Show/hide containers
+function showLogin() {
+    loginContainer.style.display = 'block';
+    mainContainer.style.display = 'none';
 }
 
-// Load selected example code into the editor
-function loadExample(name) {
-    const codeEditor = document.getElementById('codeEditor');
-    if (examples[name]) {
-        codeEditor.value = examples[name];
-        updateStatus(`Loaded example: ${name}`, 'success');
-        toggleExamples();
-        updateStatsForCode(codeEditor.value);
-        clearOutputs();
-    } else {
-        updateStatus(`Example "${name}" not found`, 'error');
-    }
+function showApp() {
+    loginContainer.style.display = 'none';
+    mainContainer.style.display = 'block';
 }
 
-// Update status message and style
-function updateStatus(message, statusClass) {
-    const statusEl = document.getElementById('status');
-    statusEl.textContent = message;
-    statusEl.className = 'status ' + (statusClass || '');
-}
+// Handle login form submit
+document.getElementById('loginForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const username = document.getElementById('loginUsername').value.trim();
+    const password = document.getElementById('loginPassword').value.trim();
+    const loginError = document.getElementById('loginError');
+    loginError.textContent = '';
 
-// Update line, error, and warning counts in the UI
-function updateStats(lineCount, errorCount, warningCount) {
-    document.getElementById('lineCount').textContent = lineCount;
-    document.getElementById('errorCount').textContent = errorCount;
-    document.getElementById('warningCount').textContent = warningCount;
-}
+    try {
+        updateStatus('Logging in...', 'info');
+        const res = await fetch('/api/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || 'Invalid credentials');
 
-// Helper to update stats for given code string
-function updateStatsForCode(code) {
-    const lines = code.split('\n').length;
-    // Errors and warnings not calculated here; call after validation
-    updateStats(lines, 0, 0);
-}
+        authToken = data.token;
+        authUser = { username: data.username, role: data.role };
+        localStorage.setItem('authToken', authToken);
+        localStorage.setItem('authUser', JSON.stringify(authUser));
 
-// Clear previous outputs on validation screen
-function clearOutputs() {
-    document.getElementById('validationOutput').innerHTML = '';
-    document.getElementById('variablesOutput').innerHTML = '';
-    document.getElementById('consoleOutput').innerHTML = '';
-}
-
-// Switch between output tabs: validation, variables, console
-function switchTab(tabName) {
-    const tabs = document.querySelectorAll('.tab');
-    const contents = document.querySelectorAll('.tab-content');
-    tabs.forEach(tab => {
-        tab.classList.toggle('active', tab.dataset.tab === tabName);
-    });
-    contents.forEach(content => {
-        if (content.id === `${tabName}Output`) {
-            content.style.display = 'block';
-            content.classList.add('active');
-        } else {
-            content.style.display = 'none';
-            content.classList.remove('active');
-        }
-    });
-}
-
-// Render the validation errors and warnings in Validation tab
-function renderValidationResults(errors, warnings) {
-    const outputEl = document.getElementById('validationOutput');
-    outputEl.innerHTML = '';
-
-     if (errors.length === 0 && warnings.length === 0) {
-        const successMsg = document.createElement('div');
-        successMsg.className = 'output-line success';
-        successMsg.textContent = 'No errors or warnings found. Code is valid!';
-        outputEl.appendChild(successMsg);
-        // Do not hide console output here
-        return;
-    }
-
-    errors.forEach(err => {
-    const errDiv = document.createElement('div');
-    errDiv.className = 'output-line error';
-    errDiv.textContent = `Line ${err.line}: ${err.message}`;
-    outputEl.appendChild(errDiv);
-    
-    if (err.recommendation) {
-      const recDiv = document.createElement('div');
-      recDiv.className = 'output-line recommendation';
-      recDiv.style.marginLeft = '20px';
-      recDiv.style.fontStyle = 'italic';
-      recDiv.style.color = '#ffcc00';
-      recDiv.textContent = `→ Recommendation: ${err.recommendation}`;
-      outputEl.appendChild(recDiv);
+        updateStatus(`Logged in as ${authUser.username} (${authUser.role})`, 'success');
+        showApp();
+        renderAppByRole();
+    } catch (err) {
+        updateStatus('', '');
+        loginError.textContent = err.message;
     }
 });
 
-
-    warnings.forEach(warn => {
-        const warnDiv = document.createElement('div');
-        warnDiv.className = 'output-line warning';
-        warnDiv.textContent = `Line ${warn.line}: ${warn.message}`;
-        outputEl.appendChild(warnDiv);
-    });
+// Logout function
+function logoutUser() {
+    authToken = null;
+    authUser = null;
+    localStorage.removeItem('authToken');
+    localStorage.removeItem('authUser');
+    updateStatus('Logged out.', 'info');
+    showLogin();
 }
 
-// Render declared variables in Variables tab
-function renderVariables(variables) {
-    const outputEl = document.getElementById('variablesOutput');
-    outputEl.innerHTML = '';
-
-    if (variables.length === 0) {
-        const infoDiv = document.createElement('div');
-        infoDiv.className = 'output-line info';
-        infoDiv.textContent = 'No variables declared.';
-        outputEl.appendChild(infoDiv);
-        return;
+// Render UI by role on login
+function renderAppByRole() {
+    if (!authUser) {
+        showLogin();
+    } else if (authUser.role === 'student') {
+        renderStudentCompiler();
+    } else if (authUser.role === 'instructor') {
+        renderInstructorDashboard();
+    } else {
+        showLogin();
     }
-
-    const varList = document.createElement('div');
-    varList.className = 'variables-list';
-
-    const header = document.createElement('h4');
-    header.textContent = 'Declared Variables';
-    varList.appendChild(header);
-
-    variables.forEach(([name, type]) => {
-        const varItem = document.createElement('div');
-        varItem.className = 'variable-item';
-
-        const varName = document.createElement('span');
-        varName.className = 'variable-name';
-        varName.textContent = name;
-
-        const varType = document.createElement('span');
-        varType.className = 'variable-type';
-        varType.textContent = type;
-
-        varItem.appendChild(varName);
-        varItem.appendChild(varType);
-        varList.appendChild(varItem);
-    });
-
-    outputEl.appendChild(varList);
 }
 
-// Render console output (print and input prompts) in Console tab
-function renderConsole(consoleMsgs) {
-    const outputEl = document.getElementById('consoleOutput');
-    outputEl.innerHTML = '';
+// STUDENT COMPILER UI render
+function renderStudentCompiler() {
+    mainContainer.innerHTML = `
+        <div class="header">
+            <button onclick="logoutUser()" style="float:right">Logout</button>
+            <h2>Hello, ${authUser.username} (Student)</h2>
+        </div>
+        <div class="left-panel">
+            <div class="panel-header">📝 Code Editor</div>
+            <textarea id="codeEditor" placeholder="// Write your Yantrabhasha code here..."></textarea>
+            <button onclick="runCode()">▶️ Run</button>
+            <button onclick="loadExample('hello')">Load Hello Example</button>
+        </div>
+        <div class="right-panel">
+            <div class="panel-header">📋 Output & Results</div>
+            <div class="stats-bar">
+                <div class="stat-item"><span>Lines: </span><span id="lineCount">0</span></div>
+                <div class="stat-item"><span>Errors: </span><span id="errorCount">0</span></div>
+                <div class="stat-item"><span>Warnings: </span><span id="warningCount">0</span></div>
+            </div>
+            <div class="output-tabs">
+                <div class="tab active" data-tab="validation" onclick="switchTab('validation')">Validation</div>
+                <div class="tab" data-tab="variables" onclick="switchTab('variables')">Variables</div>
+                <div class="tab" data-tab="console" onclick="switchTab('console')">Console</div>
+            </div>
+            <div class="output-content">
+                <div id="validationOutput" class="tab-content active"></div>
+                <div id="variablesOutput" class="tab-content" style="display:none"></div>
+                <div id="consoleOutput" class="tab-content" style="display:none"></div>
+            </div>
+        </div>
+    `;
+    clearOutputs();
+    loadExample('hello');
+    switchTab('validation');
+}
 
-    if (consoleMsgs.length === 0) {
-        const infoDiv = document.createElement('div');
-        infoDiv.className = 'output-line info';
-        infoDiv.textContent = 'No console output.';
-        outputEl.appendChild(infoDiv);
-        return;
+// Save student submission to backend
+async function saveSubmission(code, status, description) {
+    if (!authToken) return;
+    try {
+        await fetch('/api/submissions', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-auth-token': authToken
+            },
+            body: JSON.stringify({ code, status, description }),
+        });
+    } catch (err) {
+        console.error('Failed to save submission:', err);
     }
-
-    consoleMsgs.forEach(msg => {
-        const msgDiv = document.createElement('div');
-        msgDiv.className = 'output-line';
-
-        // Style output or input differently
-        if (msg.type === 'output') {
-            msgDiv.classList.add('success');
-            msgDiv.textContent = `Output (Line ${msg.line}): ${msg.value}`;
-        } else if (msg.type === 'input') {
-            msgDiv.classList.add('info');
-            msgDiv.textContent = `Input required (Line ${msg.line}): ${msg.value}`;
-        } else {
-            msgDiv.textContent = msg.value;
-        }
-        outputEl.appendChild(msgDiv);
-    });
 }
 
-// Called when Run button clicked
-function runCode() {
+// Run Yantrabhasha code validation and save result
+async function runCode() {
     const codeEditor = document.getElementById('codeEditor');
     const code = codeEditor.value.trim();
-
-    // Basic line count update
     updateStatsForCode(code);
 
     if (code.length === 0) {
@@ -228,51 +171,156 @@ function runCode() {
         return;
     }
 
-    // Run validation
     const result = validator.validate(code);
-
-    // Update UI for errors and warnings
     renderValidationResults(result.errors, result.warnings);
-
-    // Update Variables tab
     renderVariables(result.variables);
-
-    // Update Console tab output
     renderConsole(result.console);
-
-    // Update counts box for errors/warnings
-    updateStats(
-        code.split('\n').length,
-        result.errors.length,
-        result.warnings.length
-    );
+    updateStats(code.split('\n').length, result.errors.length, result.warnings.length);
 
     if (result.errors.length > 0) {
         updateStatus('Validation failed with errors.', 'error');
+        await saveSubmission(code, 'error', result.errors.map(e => `Line ${e.line}: ${e.message}`).join(' | '));
     } else if (result.warnings.length > 0) {
         updateStatus('Validation completed with warnings.', 'warning');
+        await saveSubmission(code, 'success', 'Warnings: ' + result.warnings.map(e => e.message).join(' | '));
     } else {
         updateStatus('Validation successful! No errors or warnings.', 'success');
+        const consoleOutputs = result.console.filter(c => c.type === 'output').map(c => c.value).join(' ');
+        await saveSubmission(code, 'success', consoleOutputs);
     }
 }
 
-// Initialize event listeners and default states when page loads
-function init() {
-    // Hide examples menu if clicking outside
-    document.addEventListener('click', (event) => {
-        const menu = document.getElementById('examplesMenu');
-        const button = document.querySelector('.examples-btn');
-        if (!menu.contains(event.target) && !button.contains(event.target)) {
-            menu.classList.remove('show');
-        }
-    });
-
-    // Load default example (optional)
-    loadExample('hello');
-
-    // Show Validation tab by default
-    switchTab('validation');
+// INSTRUCTOR DASHBOARD UI render
+function renderInstructorDashboard() {
+    mainContainer.innerHTML = `
+        <div class="header">
+            <button onclick="logoutUser()" style="float:right">Logout</button>
+            <h2>Hello, ${authUser.username} (Instructor)</h2>
+        </div>
+        <div>
+            <label for="studentUsernameInput">Enter Student Username:</label>
+            <input type="text" id="studentUsernameInput" placeholder="Student Username" />
+            <button onclick="loadStudentSubmissions()">Load Submissions</button>
+            <div id="dashboardStatus"></div>
+        </div>
+        <div id="submissionsList"></div>
+    `;
 }
 
-// Run init on page load
-window.onload = init;
+async function loadStudentSubmissions() {
+    const username = document.getElementById('studentUsernameInput').value.trim();
+    const statusEl = document.getElementById('dashboardStatus');
+    const listEl = document.getElementById('submissionsList');
+    listEl.innerHTML = '';
+    statusEl.textContent = '';
+
+    if (!username) {
+        statusEl.style.color = 'red';
+        statusEl.textContent = 'Please enter a student username.';
+        return;
+    }
+
+    try {
+        statusEl.style.color = 'black';
+        statusEl.textContent = 'Loading submissions...';
+
+        const res = await fetch('/api/submissions/' + encodeURIComponent(username), {
+            headers: { 'x-auth-token': authToken }
+        });
+
+        if (!res.ok) {
+            const error = await res.json();
+            statusEl.style.color = 'red';
+            statusEl.textContent = error.message || 'Failed to load submissions.';
+            return;
+        }
+
+        const submissions = await res.json();
+        if (submissions.length === 0) {
+            statusEl.textContent = `No submissions found for user '${username}'.`;
+            return;
+        }
+
+        statusEl.textContent = `Found ${submissions.length} submissions for '${username}':`;
+
+        submissions.forEach(sub => {
+            const div = document.createElement('div');
+            div.className = 'submission-item';
+            div.style.border = '1px solid #ccc';
+            div.style.margin = '10px 0';
+            div.style.padding = '10px';
+            div.innerHTML = `
+                <b>Timestamp:</b> ${new Date(sub.timestamp).toLocaleString()}<br/>
+                <b>Status:</b> ${sub.status}<br/>
+                <b>Code:</b><pre>${sub.code.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
+                <b>Description:</b> <pre>${sub.description.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
+            `;
+            listEl.appendChild(div);
+        });
+    } catch (err) {
+        statusEl.style.color = 'red';
+        statusEl.textContent = 'Error loading submissions.';
+        console.error(err);
+    }
+}
+
+// Existing helpers (updateStatus, updateStats, updateStatsForCode, clearOutputs, renderValidationResults, renderVariables, renderConsole)
+// Remain unchanged, copy from your original app.js
+
+function updateStatus(message, statusClass) {
+    let statusEl = document.getElementById('status');
+    if (!statusEl) {
+        statusEl = document.createElement('div');
+        statusEl.id = 'status';
+        document.body.insertBefore(statusEl, document.body.firstChild);
+    }
+    statusEl.textContent = message || '';
+    statusEl.className = 'status ' + (statusClass || '');
+}
+
+function updateStats(lineCount, errorCount, warningCount) {
+    const lineCt = document.getElementById('lineCount');
+    const errorCt = document.getElementById('errorCount');
+    const warnCt = document.getElementById('warningCount');
+    if (lineCt) lineCt.textContent = lineCount;
+    if (errorCt) errorCt.textContent = errorCount;
+    if (warnCt) warnCt.textContent = warningCount;
+}
+
+function updateStatsForCode(code) {
+    const lines = code.split('\n').length;
+    updateStats(lines, 0, 0);
+}
+
+function clearOutputs() {
+    const valOut = document.getElementById('validationOutput');
+    const varOut = document.getElementById('variablesOutput');
+    const conOut = document.getElementById('consoleOutput');
+    if (valOut) valOut.innerHTML = '';
+    if (varOut) varOut.innerHTML = '';
+    if (conOut) conOut.innerHTML = '';
+}
+
+// Use your existing rendering functions for validation, variables, console here (no change).
+
+// On window load, show login or app depending on saved token
+window.onload = () => {
+    if (authUser && authToken) {
+        showApp();
+        renderAppByRole();
+    } else {
+        showLogin();
+    }
+};
+
+// Show login UI if not logged in
+function showLogin() {
+    loginContainer.style.display = 'block';
+    mainContainer.style.display = 'none';
+}
+
+// Show main app UI if logged in
+function showApp() {
+    loginContainer.style.display = 'none';
+    mainContainer.style.display = 'block';
+}
