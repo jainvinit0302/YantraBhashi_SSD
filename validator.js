@@ -1,409 +1,476 @@
-/**
- * Yantrabhasha Programming Language Validator
- * Core validation logic for syntax and semantic analysis
- */
+//console.log("hello");
 
-class YantraBhashaValidator {
-    constructor() {
-        this.variables = new Map();
-        this.errors = [];
-        this.warnings = [];
-        this.consoleOutput = [];
-        this.reservedWords = [
-            'PADAM', 'ANKHE', 'VARTTAI', 'ELAITHE', 
-            'ALAITHE', 'MALLI-MALLI', 'CHATIMPU', 'CHEPPU'
-        ];
-        this.currentLine = 0;
-    }
+const scopeStack=[new Map()];
+const bracketStack_if=[];
+////////////////////////////////////////////////////////////////////////
+function tokenize(input,del){
 
-    /**
-     * Main validation method
-     * @param {string} code - The Yantrabhasha code to validate
-     * @returns {object} Validation results
-     */
-    validate(code) {
-        this.reset();
-        const lines = code.split('\n');
-        
-        for (let i = 0; i < lines.length; i++) {
-            this.currentLine = i + 1;
-            const line = lines[i].trim();
-            
-            // Skip empty lines and comments
-            if (line === '' || line.startsWith('#')) continue;
-            
-            this.validateLine(line);
-        }
+     let token=[];
+     let left=0;
+     let right=0;
+     while(left<input.length){
+         if(left==right && input[left]==del){
+            left++;
+            continue;
+         }
+         right=left+1;
+         while(right<input.length && input[right]!=del){
+            right++;
+         }
+         token.push(input.substring(left,right));
+         left=right;
 
+     }
+     return token;
+      
+}
+////////////////////////////////////////////////////////////////////////
+function enterScope(){
+
+    scopeStack.push(new Map());
+}
+///////////////////////////////////////////////////////////////////////
+function exitScope(){
+      if(scopeStack.length>1){
+        scopeStack.pop();
+      }
+}
+////////////////////////////////////////////////////////////////////////\
+function declare(variableName, info) {
+    const currentScope = scopeStack[scopeStack.length - 1];
+
+    
+    if (currentScope.has(variableName)) {
+       
         return {
-            errors: this.errors,
-            warnings: this.warnings,
-            variables: Array.from(this.variables.entries()),
-            console: this.consoleOutput
+            success: false,
+            error: `Semantic Error: Variable '${variableName}' has already been declared in this scope.`
         };
     }
 
-    /**
-     * Reset validator state
-     */
-    reset() {
-        this.variables.clear();
-        this.errors = [];
-        this.warnings = [];
-        this.consoleOutput = [];
-        this.currentLine = 0;
+  
+    currentScope.set(variableName, info);
+    return { success: true };
+}
+////////////////////////////////////////////////////////////////////////
+function lookup(variableName) {
+    for (let i = scopeStack.length - 1; i >= 0; i--) {
+        if (scopeStack[i].has(variableName)) {
+            return scopeStack[i].get(variableName);
+        }
+    }
+    return null;
+}
+///////////////////////////////////////////////////////////////////////
+
+////////////////////////////////////////////////////////////////////////
+function validatePadam(line) {
+    const trimmedLine = line.trim();
+
+    if (!trimmedLine.startsWith('PADAM ')) {
+        return { status: 'NOT_PADAM' };
+    }
+const padamRegex = /^\s*PADAM\s+(?<variable>[a-zA-Z_]\w*)\s*:\s*(?<type>ANKHE|VARTTAI)(?:\s*=\s*(?<value>\d+|"[^"]*:"))?\s*;\s*$/;
+    
+
+    const match = trimmedLine.match(padamRegex);
+
+    if (!match) {
+        return { status: 'INVALID_SYNTAX', error: "Syntax error in PADAM declaration." };
     }
 
-    /**
-     * Validate a single line of code
-     * @param {string} line - Line to validate
-     */
-    validateLine(line) {
-        const cleanLine = line.endsWith(';') ? line.slice(0, -1) : line;
+    const { variable, type, value } = match.groups;
+    
+   
+    if (value !== undefined) {
         
-        if (this.isVariableDeclaration(cleanLine)) {
-            this.validateVariableDeclaration(line);
-        } else if (this.isAssignment(cleanLine)) {
-            this.validateAssignment(line);
-        } else if (this.isConditional(cleanLine)) {
-            this.validateConditional(line);
-        } else if (this.isLoop(cleanLine)) {
-            this.validateLoop(line);
-        } else if (this.isPrint(cleanLine)) {
-            this.validatePrint(line);
-        } else if (this.isScan(cleanLine)) {
-            this.validateScan(line);
-        } else if (cleanLine === ']' || cleanLine === '] ALAITHE [') {
-            // Block endings are valid
-        } else if (cleanLine !== '') {
-            this.addError(`Unknown statement: ${line}`);
-        }
-    }
-
-    /**
-     * Check if line is a variable declaration
-     */
-    isVariableDeclaration(line) {
-        return line.startsWith('PADAM ') && line.includes(':');
-    }
-
-    /**
-     * Validate variable declaration syntax and semantics
-     */
-    validateVariableDeclaration(line) {
-        if (!line.endsWith(';')) {
-            this.addError('Variable declaration must end with semicolon');
-            return;
-        }
-
-        const cleanLine = line.slice(0, -1);
-        const match = cleanLine.match(/PADAM\s+(\w+):(ANKHE|VARTTAI)(?:\s*=\s*(.+))?/);
+        const isStringValue = value.startsWith('"');
         
-        if (!match) {
-            this.addError('Invalid variable declaration syntax');
-            return;
+        if (type === 'ANKHE' && isStringValue) {
+            return {
+                status: 'SEMANTIC_ERROR',
+                error: `Type Mismatch: Cannot assign a VARTTAI (string) to an ANKHE (integer) variable '${variable}'.`
+            };
         }
-
-        const [, varName, type, value] = match;
-
-        // Check reserved words
-        if (this.reservedWords.includes(varName)) {
-            this.addError(`Cannot use reserved word '${varName}' as variable name`);
-            return;
-        }
-
-        // Check identifier format
-        if (!/^[a-zA-Z][a-zA-Z0-9_]*$/.test(varName)) {
-            this.addError(`Invalid variable name '${varName}'. Must start with letter and contain only letters, digits, and underscores`);
-            return;
-        }
-
-        // Check for redeclaration
-        if (this.variables.has(varName)) {
-            this.addWarning(`Variable '${varName}' already declared`);
-        }
-
-        // Store variable
-        this.variables.set(varName, type);
-
-        // Validate initial value if provided
-        if (value) {
-            this.validateValue(value, type, varName);
-        }
-    }
-
-    /**
-     * Validate value assignment based on type
-     */
-    validateValue(value, expectedType, varName) {
-        value = value.trim();
         
-        if (expectedType === 'ANKHE') {
-            if (!/^-?\d+$/.test(value) && !this.isExpression(value)) {
-                this.addError(`Invalid integer value for variable '${varName}': ${value}`);
-            }
-        } else if (expectedType === 'VARTTAI') {
-            if (!value.startsWith('"') || !value.endsWith('"')) {
-                this.addError(`String value must be enclosed in quotes for variable '${varName}': ${value}`);
-            }
-        }
-    }
-
-    /**
-     * Check if value is a valid expression
-     */
-    isExpression(value) {
-        const variables = Array.from(this.variables.keys()).join('|');
-        const regex = new RegExp(`^[\\w\\s\\+\\-\\*\\/\\(\\)${variables}]+$`);
-        return regex.test(value);
-    }
-
-    /**
-     * Check if line is an assignment
-     */
-    isAssignment(line) {
-        return /^\w+\s*=\s*.+/.test(line) && !line.startsWith('PADAM');
-    }
-
-    /**
-     * Validate assignment statement
-     */
-    validateAssignment(line) {
-        if (!line.endsWith(';')) {
-            this.addError('Assignment must end with semicolon');
-            return;
+        if (type === 'VARTTAI' && !isStringValue) {
+            return {
+                status: 'SEMANTIC_ERROR',
+                error: `Type Mismatch: Cannot assign an ANKHE (integer) to a VARTTAI (string) variable '${variable}'.`
+            };
         }
 
-        const cleanLine = line.slice(0, -1);
-        const match = cleanLine.match(/^(\w+)\s*=\s*(.+)$/);
-        
-        if (!match) {
-            this.addError('Invalid assignment syntax');
-            return;
-        }
+        return { 
+            status: 'VALID', 
+            type: 'initialization',
+            data: { variable, type, value } 
+        };
 
-        const [, varName, value] = match;
-
-        // Check if variable is declared
-        if (!this.variables.has(varName)) {
-            this.addError(`Variable '${varName}' used before declaration`);
-            return;
-        }
-
-        const varType = this.variables.get(varName);
-        this.validateValue(value, varType, varName);
-    }
-
-    /**
-     * Check if line is a conditional statement
-     */
-    isConditional(line) {
-        return line.startsWith('ELAITHE ');
-    }
-
-    /**
-     * Validate conditional statement
-     */
-    validateConditional(line) {
-        const match = line.match(/ELAITHE\s*\((.+?)\)\s*\[/);
-        
-        if (!match) {
-            this.addError('Invalid conditional syntax. Use: ELAITHE (condition) [');
-            return;
-        }
-
-        const condition = match[1];
-        this.validateCondition(condition);
-    }
-
-    /**
-     * Validate condition expression
-     */
-    validateCondition(condition) {
-        const operators = ['==', '!=', '<=', '>=', '<', '>'];
-        let foundOperator = false;
-        
-        for (const op of operators) {
-            if (condition.includes(op)) {
-                foundOperator = true;
-                const parts = condition.split(op);
-                
-                if (parts.length !== 2) {
-                    this.addError(`Invalid condition: ${condition}`);
-                    return;
-                }
-
-                parts.forEach(part => {
-                    part = part.trim();
-                    if (part.startsWith('"') && part.endsWith('"')) {
-                        // String literal - valid
-                    } else if (/^-?\d+$/.test(part)) {
-                        // Integer literal - valid
-                    } else if (/^[a-zA-Z]\w*$/.test(part)) {
-                        // Variable - check if declared
-                        if (!this.variables.has(part)) {
-                            this.addError(`Variable '${part}' used in condition before declaration`);
-                        }
-                    } else {
-                        this.addError(`Invalid operand in condition: ${part}`);
-                    }
-                });
-                break;
-            }
-        }
-
-        if (!foundOperator) {
-            this.addError(`Condition must use comparison operators (==, !=, <, >, <=, >=): ${condition}`);
-        }
-    }
-
-    /**
-     * Check if line is a loop statement
-     */
-    isLoop(line) {
-        return line.startsWith('MALLI-MALLI ');
-    }
-
-    /**
-     * Validate loop statement
-     */
-    validateLoop(line) {
-        const match = line.match(/MALLI-MALLI\s*\((.+?)\)\s*\[/);
-        
-        if (!match) {
-            this.addError('Invalid loop syntax. Use: MALLI-MALLI (initialization; condition; update) [');
-            return;
-        }
-
-        const loopParams = match[1];
-        const parts = loopParams.split(';');
-        
-        if (parts.length !== 3) {
-            this.addError('Loop must have three parts: initialization; condition; update');
-            return;
-        }
-
-        // Validate initialization
-        const init = parts[0].trim();
-        if (init.startsWith('PADAM ')) {
-            this.validateVariableDeclaration(init + ';');
-        }
-
-        // Validate condition
-        const condition = parts[1].trim();
-        this.validateCondition(condition);
-
-        // Validate update
-        const update = parts[2].trim();
-        if (!this.isAssignment(update)) {
-            this.addError('Loop update must be an assignment');
-        }
-    }
-
-    /**
-     * Check if line is a print statement
-     */
-    isPrint(line) {
-        return line.startsWith('CHATIMPU(');
-    }
-
-    /**
-     * Validate print statement
-     */
-    validatePrint(line) {
-        if (!line.endsWith(';')) {
-            this.addError('CHATIMPU statement must end with semicolon');
-            return;
-        }
-
-        const match = line.match(/CHATIMPU\((.+?)\);/);
-        
-        if (!match) {
-            this.addError('Invalid CHATIMPU syntax');
-            return;
-        }
-
-        const arg = match[1].trim();
-        
-        if (arg.startsWith('"') && arg.endsWith('"')) {
-            // String literal
-            const output = arg.slice(1, -1);
-            this.consoleOutput.push({ 
-                type: 'output', 
-                value: output, 
-                line: this.currentLine 
-            });
-        } else if (/^[a-zA-Z]\w*$/.test(arg)) {
-            // Variable
-            if (!this.variables.has(arg)) {
-                this.addError(`Variable '${arg}' used in CHATIMPU before declaration`);
-            } else {
-                this.consoleOutput.push({ 
-                    type: 'output', 
-                    value: `[${arg}]`, 
-                    line: this.currentLine 
-                });
-            }
-        } else {
-            this.addError(`Invalid argument for CHATIMPU: ${arg}`);
-        }
-    }
-
-    /**
-     * Check if line is a scan statement
-     */
-    isScan(line) {
-        return line.startsWith('CHEPPU(');
-    }
-
-    /**
-     * Validate scan statement
-     */
-    validateScan(line) {
-        if (!line.endsWith(';')) {
-            this.addError('CHEPPU statement must end with semicolon');
-            return;
-        }
-
-        const match = line.match(/CHEPPU\((\w+)\);/);
-        
-        if (!match) {
-            this.addError('Invalid CHEPPU syntax');
-            return;
-        }
-
-        const varName = match[1];
-        
-        if (!this.variables.has(varName)) {
-            this.addError(`Variable '${varName}' used in CHEPPU before declaration`);
-        } else {
-            this.consoleOutput.push({ 
-                type: 'input', 
-                value: `Input required for ${varName}`, 
-                line: this.currentLine 
-            });
-        }
-    }
-
-    /**
-     * Add an error to the error list
-     */
-    addError(message) {
-        this.errors.push({ 
-            line: this.currentLine, 
-            message, 
-            type: 'error' 
-        });
-    }
-
-    /**
-     * Add a warning to the warning list
-     */
-    addWarning(message) {
-        this.warnings.push({ 
-            line: this.currentLine, 
-            message, 
-            type: 'warning' 
-        });
+    } else {
+       
+        return { 
+            status: 'VALID', 
+            type: 'declaration',
+            data: { variable, type, value: undefined } 
+        };
     }
 }
+///////////////////////////////////////////////////////////////////////////////
+
+function validateCheppu(line, lookupFn) {
+    const trimmedLine = line.trim();
+
+   
+    if (!trimmedLine.startsWith('CHEPPU')) {
+        return { status: 'NOT_CHEPPU' };
+    }
+
+   
+   const cheppuRegex = /^\s*CHEPPU\s*\(\s*(?<variable>[a-zA-Z_]\w*)\s*\)\s*;\s*$/;
+    const match = trimmedLine.match(cheppuRegex);
+
+    if (!match) {
+        return { 
+            status: 'INVALID_SYNTAX', 
+            error: "Syntax error in CHEPPU statement. Expected format: CHEPPU(variable)" 
+        };
+    }
+
+    const { variable } = match.groups;
+
+  
+    const variableInfo = lookupFn(variable);
+    
+    if (variableInfo === null) {
+        return {
+            status: 'SEMANTIC_ERROR',
+            error: `Undeclared Variable: Cannot get input for '${variable}' because it has not been declared.`
+        };
+    }
+
+  
+    return {
+        status: 'VALID',
+        data: {
+            command: 'CHEPPU',
+            variable: variable
+        }
+    };
+}
+///////////////////////////////////////////////////////////////////////////////
+
+function validateAssignment(line) {
+    
+    const assignRegex = /^\s*(?<lhsVar>[a-zA-Z_]\w*)\s*=\s*(?<rhsExpr>.*)\s*;\s*$/;
+    const match = line.trim().match(assignRegex);
+
+    if (!match) {
+        return { status: 'NOT_ASSIGNMENT' };
+    }
+
+    const { lhsVar, rhsExpr } = match.groups;
+
+   
+    const lhsInfo = lookup(lhsVar);
+    if (!lhsInfo) {
+        return { status: 'SEMANTIC_ERROR', error: `Undeclared variable '${lhsVar}' used in assignment.` };
+    }
+
+    let rhsType;
+    
+  
+    const operators = ['+', '-', '*', '/'];
+    
+    const foundOperator = operators.find(op => rhsExpr.includes(op));
+
+    if (foundOperator) {
+        const parts = rhsExpr.split(foundOperator);
+       
+        if (parts.length !== 2) {
+            return { status: 'INVALID_SYNTAX', error: 'Malformed expression. Only simple binary operations are supported.' };
+        }
+
+        const leftResult = getExpressionType(parts[0], lookupFn);
+        const rightResult = getExpressionType(parts[1], lookupFn);
+
+        if (!leftResult.success) return { status: 'SEMANTIC_ERROR', error: leftResult.error };
+        if (!rightResult.success) return { status: 'SEMANTIC_ERROR', error: rightResult.error };
+        
+        
+        if (leftResult.type === 'ANKHE' && rightResult.type === 'ANKHE') {
+            rhsType = 'ANKHE';
+        } else {
+            return { status: 'SEMANTIC_ERROR', error: `Type Mismatch: Operator '${foundOperator}' can only be used between two ANKHE types.` };
+        }
+    } else {
+       
+        const result = getExpressionType(rhsExpr, lookupFn);
+        if (!result.success) return { status: 'SEMANTIC_ERROR', error: result.error };
+        rhsType = result.type;
+    }
+
+    if (lhsInfo.type !== rhsType) {
+        return { 
+            status: 'SEMANTIC_ERROR', 
+            error: `Type Mismatch: Cannot assign a value of type ${rhsType} to variable '${lhsVar}' of type ${lhsInfo.type}.` 
+        };
+    }
+    
+    return { status: 'VALID' };
+}
+///////////////////////////////////////////////////////////////////////////////
+
+
+ 
+function validateChatimpu(line) {
+    const trimmedLine = line.trim();
+
+   
+    if (!trimmedLine.startsWith('CHATIMPU')) {
+        return { status: 'NOT_CHATIMPU' };
+    }
+
+ const chatimpuRegex = /^\s*CHATIMPU\s*\(\s*(?<argument>"(?:\\.|[^"\\])*"|[a-zA-Z_]\w*)\s*\)\s*;\s*$/;
+    
+    const match = trimmedLine.match(chatimpuRegex);
+
+    if (!match) {
+        return { 
+            status: 'INVALID_SYNTAX', 
+            error: "Syntax error in CHATIMPU. Expected format: CHATIMPU(variable) or CHATIMPU(\"text\"). Expressions are not allowed." 
+        };
+    }
+
+    const { argument } = match.groups;
+
+
+    if (argument.startsWith('"')) {
+        return { 
+            status: 'VALID', 
+            data: { type: 'literal', value: argument } 
+        };
+    } else {
+        
+        if (lookup(argument) === null) {
+            return { 
+                status: 'SEMANTIC_ERROR', 
+                error: `Undeclared Variable: Cannot print '${argument}' because it has not been declared.` 
+            };
+        }
+        
+       
+        return { 
+            status: 'VALID', 
+            data: { type: 'variable', name: argument } 
+        };
+    }
+}
+//////////////////////////////////////////////////////////////////////////////////
+
+
+function validateElaitheHeader(line, lookupFn) {
+    const trimmedLine = line.trim();
+
+    if (!trimmedLine.startsWith('ELAITHE')) {
+        return { status: 'NOT_ELAITHE' };
+    }
+
+  
+    const determineType = (expr) => {
+        expr = expr.trim();
+        
+        if (/^\d+$/.test(expr)) {
+            return { success: true, type: 'ANKHE' };
+        }
+
+        if (/^"[^"]*:?"$/.test(expr)) {
+            return { success: true, type: 'VARTTAI' };
+        }
+
+       
+        const variableInfo = lookupFn(expr);
+        if (variableInfo) {
+            return { success: true, type: variableInfo.type };
+        }
+
+        
+        return { success: false, error: `Undeclared variable '${expr}' used in condition.` };
+    };
+
+    const headerRegex = /^\s*ELAITHE\s*\(\s*(?<operand1>\S+)\s*(?<operator>==|!=|<=|>=|<|>)\s*(?<operand2>\S+)\s*\)\s*\[\s*$/;
+    const match = trimmedLine.match(headerRegex);
+
+    if (!match) {
+        return { 
+            status: 'INVALID_SYNTAX', 
+            error: "Syntax error in ELAITHE header. Expected: ELAITHE (value operator value) ["
+        };
+    }
+
+    const { operand1, operator, operand2 } = match.groups;
+
+   
+    const op1Result = determineType(operand1);
+    const op2Result = determineType(operand2);
+
+   
+    if (!op1Result.success) return { status: 'SEMANTIC_ERROR', error: op1Result.error };
+    if (!op2Result.success) return { status: 'SEMANTIC_ERROR', error: op2Result.error };
+
+    const type1 = op1Result.type;
+    const type2 = op2Result.type;
+    
+
+    if (type1 !== type2) {
+        return {
+            status: 'SEMANTIC_ERROR',
+            error: `Type Mismatch: Cannot compare type ${type1} with type ${type2} in condition.`
+        };
+    }
+    
+    
+    return { status: 'VALID' };
+}
+////////////////////////////////////////////////////////////////////////////////
+
+
+function validateBlockEnd(line) {
+    const trimmedLine = line.trim();
+
+   
+    if (!trimmedLine.startsWith(']')) {
+        return { status: 'NOT_A_BLOCK_END' };
+    }
+
+    
+    const elseRegex = /^\s*]\s*ALAITHE\s*\[\s*$/;
+    if (elseRegex.test(trimmedLine)) {
+        return {
+            status: 'VALID',
+            data: {
+                type: 'end_with_else' 
+            }
+        };
+    }
+
+
+    const endOnlyRegex = /^\s*]\s*$/;
+    if (endOnlyRegex.test(trimmedLine)) {
+        return {
+            status: 'VALID',
+            data: {
+                type: 'end_only' 
+            }
+        };
+    }
+
+   
+    return {
+        status: 'INVALID_SYNTAX',
+        error: "Malformed block-closing statement. Expected ']' or '] ALAITHE ['."
+    };
+}
+
+///////////////////////////////////////////////////////////////////////////////
+function ece_cmd(command){
+
+     const result=validatePadam(command);
+     if(result.status=="VALID"){
+                declare(result.data.variable, { 
+                type: result.data.type, 
+                value: result.data.value 
+            });  
+            
+            return {status:"next"};
+     }
+     else if(result.status=="SEMANTIC_ERROR"){
+
+              return {status:"Error"};
+     }
+
+     ///////////////////////////////////////////////////
+
+     const result1=validateCheppu(command);
+     if(result1.status=="VALID"){
+  
+            
+            return {status:"next"};
+     }
+     else if(result1.status=="SEMANTIC_ERROR"){
+
+              return {status:"Error"};
+     }
+     ///////////////////////////////////////////////////
+     const result2=validateAssignment(command);
+     if(result2.status=="VALID"){
+
+            
+            return {status:"next"};
+     }
+     else if(result2.status=="SEMANTIC_ERROR"){
+
+              return {status:"Error"};
+     }
+
+     ///////////////////////////////////////////////////
+     const result3=validateChatimpu(command);
+     if(result3.status=="VALID"){
+
+            
+            return {status:"next"};
+     }
+     else if(result3.status=="SEMANTIC_ERROR"){
+
+              return {status:"Error"};
+     }
+     ///////////////////////////////////////////////////
+
+      const result4=validateElaitheHeader(command);
+         if(result4.status=="VALID"){
+               enterScope();
+               bracketStack.push(1);
+               return {status:"next"};
+         }
+         else if(result4.status=="SEMANTIC_ERROR"){
+               return {status:"Error"};
+         }
+
+    //////////////////////////////////////////////////////
+
+     const result5=validateBlockEnd(command);
+       if(result5.status=="VALID"){
+              if(bracketStack.length==0){
+                return {status:"Error",type:"NO_OPEN_["}
+              }
+               exitScope();
+               if(result5.data.type=="end_with_else"){
+                  enterScope();
+               }
+               return {status:"next"};
+         }
+         else if(result5.status=="SEMANTIC_ERROR"){
+               return {status:"Error"};
+         }
+     /////////////////////////////////////////////////////
+   
+
+
+           
+
+}
+
+// const V=validatePadam("PADAM a:ANKHE=10;");
+//                 declare(V.data.variable, { 
+//                 type: V.data.type, 
+//                 value: V.data.value })
+
+// console.log(validateChatimpu('CHATIMPU("Hello World");'));
+// console.log(validateChatimpu('CHATIMPU(a);'));
+
+//////////////////////////////////////////////////////////////////////
+// Assume 'lookup' and 'declare' functions exist.
+
+console.log()
+
+
+
