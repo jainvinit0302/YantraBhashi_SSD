@@ -15,21 +15,15 @@ export const api = {
     createForum: (payload) => request('/forums/create', { method: 'POST', body: JSON.stringify(payload) }),
     getForums: () => request('/forums/all'),
     submit: (forumId, code) => request(`/submissions/${forumId}/submit`, {
-        method: 'POST', body: JSON.stringify({
-            code
-        })
+        method: 'POST',
+        body: JSON.stringify({ code })
     }),
     getSubmissions: (forumId) => request(`/submissions/${forumId}`),
-    giveFeedback:
-        (id,
-            feedback)
-            =>
-            request(`/submissions/feedback/${id}`,
-                {
-                    method:
-                        'POST',
-                    JSON.stringify({ feedback })
-                }),
+    giveFeedback: (id, feedback) =>
+        request(`/submissions/feedback/${id}`, {
+            method: 'POST',
+            body: JSON.stringify({ feedback })
+        }),
     validate: (code) => request('/yantra/validate', { method: 'POST', body: JSON.stringify({ code }) }),
     run: (code) => request('/yantra/run', { method: 'POST', body: JSON.stringify({ code }) }),
-}
+};
