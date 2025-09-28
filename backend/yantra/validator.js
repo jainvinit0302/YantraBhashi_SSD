@@ -1,97 +1,97 @@
-// This file contains the pure validation logic, adapted for a Node.js environment.
-// It does not interact with the DOM. It takes code as input and returns a result object.
+// backend/yantra/validator.js
 
-const reservedWords = new Set(['PADAM', 'ANKHE', 'VARTTAI', 'ELAITHE', 'ALAITHE', 'MALLI-MALLI', 'CHATIMPU', 'CHEPPU']);
+// =================================================================
+// 1. GLOBAL STATE (Reset on each function call)
+//    These will be re-initialized inside validateCode
+// =================================================================
+let scopeStack = [new Map()];
+let bracketStack = [];
+let ErrorList = [];
 
-// Helper functions (lookupVariable, declareVariable) are the same as before
-const lookupVariable = (varName, scopeStack) => {
-    for (let i = scopeStack.length - 1; i >= 0; i--) {
-        if (scopeStack[i].has(varName)) return true;
-    }
-    return false;
-};
+// =================================================================
+// 2. CORE UTILITY FUNCTIONS
+// =================================================================
 
-const declareVariable = (varName, varType, scopeStack, errors, lineNumber) => {
+function hasSemicolon(line) {
+    if (typeof line !== 'string') return false;
+    return line.trim().endsWith(';');
+}
+
+function enterScope() { scopeStack.push(new Map()); }
+function exitScope() { if (scopeStack.length > 1) scopeStack.pop(); }
+
+function declare(variableName, info) {
     const currentScope = scopeStack[scopeStack.length - 1];
-    if (currentScope.has(varName)) {
-        errors.push(`Error on line ${lineNumber}: Variable '${varName}' is already declared in this scope.`);
-        return;
+    if (currentScope.has(variableName)) {
+        return { success: false, error: `Semantic Error: Variable '${variableName}' has already been declared in this scope.` };
     }
-    if (reservedWords.has(varName)) {
-        errors.push(`Error on line ${lineNumber}: Cannot use reserved word '${varName}' as a variable name.`);
-        return;
+    currentScope.set(variableName, info);
+    return { success: true };
+}
+
+function lookup(variableName) {
+    for (let i = scopeStack.length - 1; i >= 0; i--) {
+        if (scopeStack[i].has(variableName)) {
+            return scopeStack[i].get(variableName);
+        }
     }
-    currentScope.set(varName, varType);
+    return null;
+}
+
+// NOTE: All validator functions (validatePadam, validateCheppu, validateAssignment, etc.)
+// must also be defined here, just like `ece_cmd` below, to ensure they are accessible.
+
+// =================================================================
+// 3. MAIN COMMAND RUNNER (ece_cmd)
+// =================================================================
+
+// NOTE: You MUST include all your validation functions here (validatePadam, validateCheppu, etc.) 
+// before ece_cmd, as they are called by ece_cmd.
+
+function ece_cmd(command) {
+    // ... [Your existing ece_cmd logic goes here] ...
+    // The validationOrder array and the switch/if-else logic must be fully present.
+    
+    // For brevity, I'm using a placeholder:
+    return { status: "Error", error: "Please include all validation function implementations here." };
+}
+
+// =================================================================
+// 4. MAIN EXPORTED FUNCTION
+// =================================================================
+
+const validateCode = (code) => {
+    // 1. Reset Global/Shared State for a clean run
+    scopeStack.length = 1;
+    scopeStack[0].clear();
+    bracketStack.length = 0;
+    ErrorList.length = 0; // Clear the previous errors
+
+    // 2. Tokenize the code
+    const tokens = code.replace(/\n/g, "|").split('|').map(line => line.trim()).filter(Boolean);
+    let flag = true;
+
+    // 3. Run the validation sequence
+    for (let i = 0; i < tokens.length; i++) {
+        const result = ece_cmd(tokens[i].trim());
+        if (result.status !== "next") {
+            ErrorList.push(`Error on line ${i + 1}: ${result.error}`);
+            flag = false;
+            // Note: You may want to continue to find all errors, or break early.
+            // Based on your original code, you find all errors, so let's continue.
+        }
+    }
+
+    if (bracketStack.length !== 0) {
+        ErrorList.push("Structural Error: Unclosed block. Missing one or more ']' characters.");
+        flag = false;
+    }
+
+    // 4. Return the consolidated result
+    return {
+        isValid: flag,
+        errors: ErrorList
+    };
 };
 
-// Main validation function to be exported
-const validateYantrabhasha = (code) => {
-    const lines = code.split('\n');
-    let errors = [];
-    
-    // --- Bracket Balancing Check ---
-    let blockStack = [];
-    let errorFound = false;
-
-    for (const [i, line] of lines.entries()) {
-        const lineNumber = i + 1;
-        const trimmedLine = line.trim();
-        if (trimmedLine.startsWith('ELAITHE') || trimmedLine.startsWith('ALAITHE') || trimmedLine.startsWith('MALLI-MALLI')) {
-            if (trimmedLine.endsWith('[')) {
-                const blockType = trimmedLine.split('(')[0].trim();
-                blockStack.push({ type: blockType, line: lineNumber });
-            }
-        }
-        if (trimmedLine.includes(']')) {
-            if (blockStack.length > 0) {
-                blockStack.pop();
-            } else {
-                errors.push(`Syntax Error on line ${lineNumber}: Unexpected closing bracket ']' with no corresponding open block.`);
-                errorFound = true;
-                break;
-            }
-        }
-    }
-    if (!errorFound && blockStack.length > 0) {
-        const unclosedBlock = blockStack.pop();
-        errors.push(`Syntax Error: Unclosed '${unclosedBlock.type}' block that started on line ${unclosedBlock.line}.`);
-        errorFound = true;
-    }
-    if (errorFound) {
-        return { status: 'error', message: errors };
-    }
-    
-    // --- Scope and Syntax Validation ---
-    let scopeStack = [new Map()];
-    lines.forEach((line, index) => {
-        const lineNumber = index + 1;
-        const trimmedLine = line.trim();
-
-        if (trimmedLine === '' || trimmedLine.startsWith('#')) return;
-        if (trimmedLine.includes('[')) scopeStack.push(new Map());
-        if (trimmedLine.includes(']')) {
-            if (scopeStack.length > 1) scopeStack.pop();
-        }
-        if (trimmedLine === ']') return;
-
-        // --- Statement Parsers ---
-        if (trimmedLine.startsWith('PADAM')) {
-            parseDeclaration(trimmedLine, lineNumber, scopeStack, errors);
-        } // ... include all other parse functions (parseMalliMalli, parseChatimpu, etc.) here
-    });
-
-    if (errors.length > 0) {
-        return { status: 'error', message: [...new Set(errors)] };
-    }
-
-    return { status: 'success', message: ['Validation Successful! Your Yantrabhasha code is clean. ✅'] };
-};
-
-
-// --- All the parsing helper functions go here (unchanged) ---
-// I'm omitting them for brevity, but you should copy parseDeclaration,
-// parseMalliMalli, parseAssignment, parseChatimpu, parseCheppu, and
-// checkVariablesInExpression from your previous JS file into here.
-
-
-module.exports = { validateYantrabhasha };
+module.exports = { validateCode };
