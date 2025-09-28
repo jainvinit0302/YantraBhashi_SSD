@@ -1,6 +1,6 @@
 const scopeStack=[new Map()];
 const bracketStack=[];
-const ErrorList=[];
+
 
 
 function hasSemicolon(line) {
@@ -279,7 +279,60 @@ function validateMalliMalliHeader(line,) {
 
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-function ece_cmd(command){
+// function ece_cmd(command){
+//     const validationOrder = [
+//         validatePadam,
+//         validateCheppu,
+//         validateChatimpu,
+//         validateElaitheHeader,
+//         validateMalliMalliHeader,
+//         validateBlockEnd,
+//         validateAssignment
+//     ];
+
+//     for (const validator of validationOrder) {
+//         const result = validator(command);
+//         if (result.status === "VALID") {
+            
+//             if (validator === validateElaitheHeader) {
+//                 enterScope();
+//                 bracketStack.push(1);
+//             } else if (validator === validateMalliMalliHeader) {
+//                 enterScope();
+//                 const declareResult = declare(result.data.variable, { type: result.data.type, value: result.data.value });
+//                 if (!declareResult.success) {
+                    
+//                     return { status: 'SEMANTIC_ERROR', error: declareResult.error };
+//                 }
+//                 bracketStack.push(3);
+//             } else if (validator === validateBlockEnd) {
+//                  if (bracketStack.length === 0) return {status:"Error", error:"Closing bracket ']' has no matching opening block."};
+//                  exitScope();
+//                  if (result.data.type === "end_with_else") {
+//                      enterScope();
+//                      if (bracketStack.pop() !== 1) return {status:"Error", error:"'ALAITHE' must follow an 'ELAITHE' block."};
+//                      bracketStack.push(2);
+//                  } else {
+//                      bracketStack.pop();
+//                  }
+//             } else if (validator === validatePadam) {
+//                 const declareResult = declare(result.data.variable, { type: result.data.type, value: result.data.value });
+//                 if (!declareResult.success) {
+                    
+//                     return { status: 'SEMANTIC_ERROR', error: declareResult.error };
+//                 }
+//             }
+//             return { status: "next" };
+//         }
+//         if (result.status === "SEMANTIC_ERROR" || result.status === "INVALID_SYNTAX") {
+//             return result; 
+//         }
+//     }
+
+//     return {status:"Error", error:"Invalid or unrecognized syntax"};
+// }
+//////////////////////////////////////////////////////////////////////////////////
+function ece_cmd(command) {
     const validationOrder = [
         validatePadam,
         validateCheppu,
@@ -292,8 +345,9 @@ function ece_cmd(command){
 
     for (const validator of validationOrder) {
         const result = validator(command);
+
         if (result.status === "VALID") {
-            
+            // This block handles the success path and remains mostly the same.
             if (validator === validateElaitheHeader) {
                 enterScope();
                 bracketStack.push(1);
@@ -301,7 +355,6 @@ function ece_cmd(command){
                 enterScope();
                 const declareResult = declare(result.data.variable, { type: result.data.type, value: result.data.value });
                 if (!declareResult.success) {
-                    
                     return { status: 'SEMANTIC_ERROR', error: declareResult.error };
                 }
                 bracketStack.push(3);
@@ -310,7 +363,8 @@ function ece_cmd(command){
                  exitScope();
                  if (result.data.type === "end_with_else") {
                      enterScope();
-                     if (bracketStack.pop() !== 1) return {status:"Error", error:"'ALAITHE' must follow an 'ELAITHE' block."};
+                     // CHANGED: Check specifically for an IF block (1) before popping.
+                     if (bracketStack.length === 0 || bracketStack.pop() !== 1) return {status:"Error", error:"'ALAITHE' must follow an 'ELAITHE' block."};
                      bracketStack.push(2);
                  } else {
                      bracketStack.pop();
@@ -318,24 +372,45 @@ function ece_cmd(command){
             } else if (validator === validatePadam) {
                 const declareResult = declare(result.data.variable, { type: result.data.type, value: result.data.value });
                 if (!declareResult.success) {
-                    
                     return { status: 'SEMANTIC_ERROR', error: declareResult.error };
                 }
             }
             return { status: "next" };
         }
-        if (result.status === "SEMANTIC_ERROR" || result.status === "INVALID_SYNTAX") {
-            return result; 
+
+        // ▼▼▼ NEW LOGIC BLOCK ▼▼▼
+        // This block intercepts semantic errors for block-opening statements.
+        if (result.status === "SEMANTIC_ERROR") {
+            // Check if the error came from a conditional or loop header.
+            if (validator === validateElaitheHeader || validator === validateMalliMalliHeader) {
+                // If so, enter the scope and update the bracket stack as if it were valid.
+                enterScope();
+                if (validator === validateElaitheHeader) {
+                    bracketStack.push(1); // Mark as ELAITHE block
+                } else { // This must be a MALLI-MALLI block
+                    bracketStack.push(3); // Mark as MALLI-MALLI block
+                }
+            }
+            // IMPORTANT: After managing the scope, still return the original error.
+            return result;
+        }
+        // ▲▲▲ END OF NEW LOGIC BLOCK ▲▲▲
+
+        // This handles syntax errors, which should still halt everything immediately.
+        if (result.status === "INVALID_SYNTAX") {
+            return result;
         }
     }
 
     return {status:"Error", error:"Invalid or unrecognized syntax"};
 }
-
+/////////////////////////////////////////////////////////////////////////////////
 function valid_entire(token){
+    let ErrorList=[];
     scopeStack.length = 1;
     scopeStack[0].clear();
     bracketStack.length = 0;
+    ErrorList.length=0;
     let flag=true;    
     for(let i=0; i<token.length; i++){
         let result=ece_cmd(token[i].trim());
@@ -347,10 +422,11 @@ function valid_entire(token){
         }
     }
     if (flag && bracketStack.length !== 0) {
-        console.log("Error: Unclosed block. Missing one or more ']' characters.");
+       // console.log("Error: Unclosed block. Missing one or more ']' characters.");
+        ErrorList.push("Error: Unclosed block. Missing one or more ']' characters.");
         flag = false;
     }
-    return flag;
+    return {one:flag,errors:ErrorList};
 }
 
 // =================================================================
@@ -530,14 +606,35 @@ const program_multiple_errors_2 = `
 //     console.log("------------------------------------");
 // }
 const program_countdown = `PADAM title:VARTTAI = "Countdown Program";|CHATIMPU(title);|PADAM start_val:ANKHE = 10;|MALLI-MALLI (PADAM i:ANKHE = start_val; i > 0; i = i - 1) [|ELAITHE (i == 5) [|CHATIMPU("...Halfway there!...");|] ALAITHE [|CHATIMPU(i);|]|]|CHATIMPU("Blast off! 🚀");`;
-   const token=tokenize(program_multiple_errors_2,'|');
-   const isValid = valid_entire(token);
-   if(isValid==false){
-       for(let i=0;i<ErrorList.length;i++){
-        console.log(ErrorList[i]);
-       }
-   }
+//    const token=tokenize(program_multiple_errors_2,'|');
+//    const isValid = valid_entire(token);
+//    if(isValid==false){
+//        for(let i=0;i<ErrorList.length;i++){
+//         console.log(ErrorList[i]);
+//        }
+//    }
 
+   function validateCode(program){
+
+           ///////////////////////////////////////
+               scopeStack.length = 1;     
+               scopeStack[0].clear();   
+               bracketStack.length = 0;  
+               //ErrorList.length=0;
+           ///////////////////////////////////////
+           const token=tokenize(program,'|');
+           const isValid = valid_entire(token);
+        //    if(isValid==false){
+        //         for(let i=0;i<ErrorList.length;i++){
+        //         console.log(ErrorList[i]);
+        //       }
+        //     } 
+        let temp=isValid.errors; 
+         return {
+               isValid: isValid.one,
+               errors: temp
+           };
+   }
 
 // =================================================================
 // ADDITIONAL TEST CASES
@@ -635,7 +732,7 @@ const test_expression_type_mismatch = `
 // This should FAIL. Variable names cannot start with a number.
 // This tests the regex in your validatePadam function.
 const test_invalid_variable_name = `
-    PADAM 1var:ANKHE = 100;
+    PADAM var:ANKHE = 100;
 `;
 
 // This should FAIL. An extra closing bracket is a structural error.
@@ -656,3 +753,36 @@ const test_extra_closing_bracket = `
 // runTest("Expression Type Mismatch", test_expression_type_mismatch);
 // runTest("Invalid Variable Name", test_invalid_variable_name);
 // runTest("Extra Closing Bracket", test_extra_closing_bracket);
+
+
+function jsonToPipeSeparatedString(programText) {
+    
+    if (typeof programText !== 'string' || programText.length === 0) {
+        console.error("Input must be a non-empty string.");
+        return "";
+    }
+
+   
+    return programText.replace(/\n/g, '|');
+}
+
+///////////////////////////////////////////////////////////
+
+const code = `PADAM x:ANKHE = 10;
+CHATIMPU(x);
+ELAITHE (x > 5) [
+    CHATIMPU("Greater than 5");
+]`;
+
+// const N=validateCode(test_invalid_variable_name);
+// const pipeSeparated = jsonToPipeSeparatedString(code);
+
+// const T=validateCode(pipeSeparated);
+
+// const M=validateCode(test_expression_type_mismatch);
+
+
+
+// console.log(T.isValid,T.errors);
+// console.log(M.isValid,M.errors);
+// console.log(N.isValid,N.errors);
