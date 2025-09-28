@@ -1,6 +1,5 @@
-// validator.js
+// validator.js (patched)
 // YantraBhasha single-file validator compatible with app.js
-
 (function (global) {
   // Expose as global YantraBhashaValidator
   class YantraBhashaValidator {
@@ -19,7 +18,7 @@
 
       // Split by lines and keep original line numbers
       const rawLines = code.replace(/\r\n/g, "\n").split("\n");
-      // keep lines but trim trailing spaces (not leading - so column sensitivity preserved)
+      // keep lines but replace tabs with spaces
       const lines = rawLines.map(l => l.replace(/\t/g, '    '));
 
       // iterate each line
@@ -28,18 +27,16 @@
         const trimmed = raw.trim();
         if (trimmed === "") continue; // skip empty lines silently
 
-        const res = this._processLine(trimmed, i + 1);
-        if (res && res.stopProcessing) {
-          // not used by default, but in case we want to break
-          break;
-        }
+        this._processLine(trimmed, i + 1);
       }
 
       // final bracket balance check
       if (this.bracketStack.length !== 0) {
+        const top = this.bracketStack[this.bracketStack.length - 1];
+        const originLine = top && top.line ? top.line : null;
         this.errors.push({
-          line: null,
-          message: `Unclosed block(s): missing ${this.bracketStack.length} ']' closing bracket(s).`
+          line: originLine,
+          message: `Unclosed block(s): missing ${this.bracketStack.length} ']' closing bracket(s).` + (originLine ? ` Opening block at line ${originLine}.` : '')
         });
       }
 
@@ -47,10 +44,12 @@
       const varMap = new Map();
       for (let s = 0; s < this.scopeStack.length; s++) {
         for (const [name, info] of this.scopeStack[s].entries()) {
-          varMap.set(name, info.type);
+          // Keep most recent value & type
+          varMap.set(name, { type: info.type, value: info.value });
         }
       }
-      const variables = Array.from(varMap.entries());
+      // convert to array of [name, type, value]
+      const variables = Array.from(varMap.entries()).map(([name, info]) => [name, info.type, info.value]);
 
       return {
         errors: this.errors,
@@ -74,7 +73,7 @@
 
     _getExpressionType(exprRaw, lineNo) {
       const expr = exprRaw.trim();
-      if (/^\d+$/.test(expr)) return { success: true, type: 'ANKHE' };
+      if (/^-?\d+$/.test(expr)) return { success: true, type: 'ANKHE' };
       if (/^"(?:\\.|[^"\\])*"$/.test(expr)) return { success: true, type: 'VARTTAI' };
       const info = this._lookup(expr);
       if (info) return { success: true, type: info.type };
@@ -85,8 +84,8 @@
     // Individual validators (return status objects)
     // ---------------------------
     _validatePadam(line) {
-      if (!line.startsWith('PADAM ')) return { status: 'NOT_PADAM' };
-      const padamRegex = /^\s*PADAM\s+(?<variable>[a-zA-Z_]\w*)\s*:\s*(?<type>ANKHE|VARTTAI)(?:\s*=\s*(?<value>\d+|"(?:\\.|[^"\\])*"))?\s*;\s*$/;
+      if (!line.startsWith('PADAM')) return { status: 'NOT_PADAM' };
+      const padamRegex = /^\s*PADAM\s+(?<variable>[a-zA-Z_]\w*)\s*:\s*(?<type>ANKHE|VARTTAI)(?:\s*=\s*(?<value>-?\d+|"(?:\\.|[^"\\])*"))?\s*;\s*$/;
       const match = line.match(padamRegex);
       if (!match) {
         if (!this._hasSemicolon(line)) return { status: 'INVALID_SYNTAX', error: "Missing semicolon (;) at the end of the PADAM statement." };
@@ -104,14 +103,14 @@
     }
 
     _declare(variableName, info) {
-  const currentScope = this.scopeStack[this.scopeStack.length - 1];
-  if (currentScope.has(variableName)) {
-    return { success: false, error: `Semantic Error: Variable '${variableName}' has already been declared in this scope.` };
-  }
-  // Track usage & last assignment for warnings
-  currentScope.set(variableName, { ...info, used: false, lastAssigned: undefined });
-  return { success: true };
-}
+      const currentScope = this.scopeStack[this.scopeStack.length - 1];
+      if (currentScope.has(variableName)) {
+        return { success: false, error: `Semantic Error: Variable '${variableName}' has already been declared in this scope.` };
+      }
+      // Track usage & last assignment for warnings
+      currentScope.set(variableName, { ...info, used: false, lastAssigned: undefined });
+      return { success: true };
+    }
 
     _lookup(variableName) {
       for (let i = this.scopeStack.length - 1; i >= 0; i--) {
@@ -179,32 +178,32 @@
     }
 
     _validateChatimpu(line) {
-    if (!line.startsWith('CHATIMPU')) return { status: 'NOT_CHATIMPU' };
-    const chatimpuRegex = /^\s*CHATIMPU\s*\(\s*(?<argument>"(?:\\.|[^"\\])*"|[a-zA-Z_]\w*)\s*\)\s*;\s*$/;
-    const match = line.match(chatimpuRegex);
-    if (!match) {
-      if (!this._hasSemicolon(line)) return { status: 'INVALID_SYNTAX', error: "Missing semicolon (;) at the end of the CHATIMPU statement." };
-      return { status: 'INVALID_SYNTAX', error: "Syntax error in CHATIMPU. Expected format: CHATIMPU(variable_or_literal);" };
-    }
+      if (!line.startsWith('CHATIMPU')) return { status: 'NOT_CHATIMPU' };
+      const chatimpuRegex = /^\s*CHATIMPU\s*\(\s*(?<argument>"(?:\\.|[^"\\])*"|[a-zA-Z_]\w*)\s*\)\s*;\s*$/;
+      const match = line.match(chatimpuRegex);
+      if (!match) {
+        if (!this._hasSemicolon(line)) return { status: 'INVALID_SYNTAX', error: "Missing semicolon (;) at the end of the CHATIMPU statement." };
+        return { status: 'INVALID_SYNTAX', error: "Syntax error in CHATIMPU. Expected format: CHATIMPU(variable_or_literal);" };
+      }
 
-    const { argument } = match.groups;
+      const { argument } = match.groups;
 
-    // Literal string -> always valid
-    if (argument.startsWith('"')) {
-      return { status: 'VALID', data: { type: 'literal', value: argument } };
-    }
+      // Literal string -> always valid
+      if (argument.startsWith('"')) {
+        return { status: 'VALID', data: { type: 'literal', value: argument } };
+      }
 
-    // Variable: check declaration and initialization
-    const info = this._lookup(argument);
-    if (info === null) {
-      return { status: 'SEMANTIC_ERROR', error: `Undeclared Variable: Cannot print '${argument}' because it has not been declared.` };
-    }
-    if (info.value === undefined) {
-      return { status: 'SEMANTIC_ERROR', error: `Variable '${argument}' was used before a value was assigned.` };
-    }
+      // Variable: check declaration and initialization
+      const info = this._lookup(argument);
+      if (info === null) {
+        return { status: 'SEMANTIC_ERROR', error: `Undeclared Variable: Cannot print '${argument}' because it has not been declared.` };
+      }
+      if (info.value === undefined) {
+        return { status: 'SEMANTIC_ERROR', error: `Variable '${argument}' was used before a value was assigned.` };
+      }
 
-    return { status: 'VALID', data: { type: 'variable', name: argument } };
-  }
+      return { status: 'VALID', data: { type: 'variable', name: argument } };
+    }
 
 
     _validateElaitheHeader(line) {
@@ -231,68 +230,66 @@
     }
 
     _validateMalliMalliHeader(line) {
-    if (!line.startsWith('MALLI-MALLI')) return { status: 'NOT_MALLI_MALLI' };
+      if (!line.startsWith('MALLI-MALLI')) return { status: 'NOT_MALLI_MALLI' };
 
-    const mainRegex = /^\s*MALLI-MALLI\s*\((?<content>.*)\)\s*\[\s*$/;
-    const mainMatch = line.match(mainRegex);
-    if (!mainMatch) {
-        return { status: 'INVALID_SYNTAX', error: "Malformed MALLI-MALLI structure. Expected: MALLI-MALLI (...) [" };
+      const mainRegex = /^\s*MALLI-MALLI\s*\((?<content>.*)\)\s*\[\s*$/;
+      const mainMatch = line.match(mainRegex);
+      if (!mainMatch) {
+          return { status: 'INVALID_SYNTAX', error: "Malformed MALLI-MALLI structure. Expected: MALLI-MALLI (...) [" };
+      }
+
+      const parts = mainMatch.groups.content.split(';').map(p => p.trim());
+      if (parts.length !== 3) {
+          return { status: 'INVALID_SYNTAX', error: "MALLI-MALLI loop requires three parts: initialization; condition; update." };
+      }
+
+      // Parse initialization (PADAM i:ANKHE = value) — only *validate* here, do NOT declare
+      const initPart = parts[0];
+      const padamRegex = /^\s*PADAM\s+(?<variable>[a-zA-Z_]\w*)\s*:\s*ANKHE\s*=\s*(?<value>-?\d+)\s*$/;
+      const initMatch = initPart.match(padamRegex);
+      if (!initMatch) {
+          return { status: 'SEMANTIC_ERROR', error: "Loop initialization must be a PADAM statement initializing an ANKHE variable (e.g., PADAM i:ANKHE = 0)." };
+      }
+
+      const loopVar = initMatch.groups.variable;
+      const loopValue = initMatch.groups.value;
+
+      // Helper that treats the declared loop variable as available *for validation only*
+      const internalLookup = (varName) => {
+          if (varName === loopVar) return { type: 'ANKHE', value: Number(loopValue) };
+          return this._lookup(varName);
+      };
+      const determineType = (expr) => {
+          if (/^-?\d+$/.test(expr.trim())) return { success: true, type: 'ANKHE' };
+          const result = internalLookup(expr.trim());
+          if (result) return { success: true, type: result.type };
+          return { success: false, error: `Undeclared variable '${expr}' in loop condition.` };
+      };
+
+      // Validate condition
+      const condPart = parts[1];
+      const condRegex = /^\s*(?<op1>\S+)\s*(?<op>==|!=|<=|>=|<|>)\s*(?<op2>\S+)\s*$/;
+      const condMatch = condPart.match(condRegex);
+      if (!condMatch) return { status: 'INVALID_SYNTAX', error: `Malformed loop condition: "${condPart}".` };
+
+      const op1Result = determineType(condMatch.groups.op1);
+      const op2Result = determineType(condMatch.groups.op2);
+      if (!op1Result.success) return { status: 'SEMANTIC_ERROR', error: op1Result.error };
+      if (!op2Result.success) return { status: 'SEMANTIC_ERROR', error: op2Result.error };
+      if (op1Result.type !== 'ANKHE' || op2Result.type !== 'ANKHE') {
+          return { status: 'SEMANTIC_ERROR', error: `Loop condition must compare two ANKHE types.` };
+      }
+
+      // Validate update (must use the loop variable)
+      const updatePart = parts[2];
+      const updateRegex = new RegExp(`^\\s*${loopVar}\\s*=\\s*${loopVar}\\s*([+\\-])\\s*1\\s*$`);
+      if (!updateRegex.test(updatePart)) {
+          return { status: 'SEMANTIC_ERROR', error: `Loop update must be of the form '${loopVar} = ${loopVar} + 1' or '- 1'.` };
+      }
+
+      // return VALID but do not declare the variable here
+      return { status: 'VALID', data: { variable: loopVar, type: 'ANKHE', value: Number(loopValue) } };
     }
-
-    const parts = mainMatch.groups.content.split(';').map(p => p.trim());
-    if (parts.length !== 3) {
-        return { status: 'INVALID_SYNTAX', error: "MALLI-MALLI loop requires three parts: initialization; condition; update." };
-    }
-
-    // Parse initialization (PADAM i:ANKHE = value) — only *validate* here, do NOT declare
-    const initPart = parts[0];
-    const padamRegex = /^\s*PADAM\s+(?<variable>[a-zA-Z_]\w*)\s*:\s*ANKHE\s*=\s*(?<value>\d+)\s*$/;
-    const initMatch = initPart.match(padamRegex);
-    if (!initMatch) {
-        return { status: 'SEMANTIC_ERROR', error: "Loop initialization must be a PADAM statement initializing an ANKHE variable (e.g., PADAM i:ANKHE = 0)." };
-    }
-
-    const loopVar = initMatch.groups.variable;
-    const loopValue = initMatch.groups.value;
-
-    // Helper that treats the declared loop variable as available *for validation only*
-    const internalLookup = (varName) => {
-        if (varName === loopVar) return { type: 'ANKHE', value: Number(loopValue) };
-        return lookup(varName);
-    };
-    const determineType = (expr) => {
-        if (/^\d+$/.test(expr.trim())) return { success: true, type: 'ANKHE' };
-        const result = internalLookup(expr.trim());
-        if (result) return { success: true, type: result.type };
-        return { success: false, error: `Undeclared variable '${expr}' in loop condition.` };
-    };
-
-    // Validate condition
-    const condPart = parts[1];
-    const condRegex = /^\s*(?<op1>\S+)\s*(?<op>==|!=|<=|>=|<|>)\s*(?<op2>\S+)\s*$/;
-    const condMatch = condPart.match(condRegex);
-    if (!condMatch) return { status: 'INVALID_SYNTAX', error: `Malformed loop condition: "${condPart}".` };
-
-    const op1Result = determineType(condMatch.groups.op1);
-    const op2Result = determineType(condMatch.groups.op2);
-    if (!op1Result.success) return { status: 'SEMANTIC_ERROR', error: op1Result.error };
-    if (!op2Result.success) return { status: 'SEMANTIC_ERROR', error: op2Result.error };
-    if (op1Result.type !== 'ANKHE' || op2Result.type !== 'ANKHE') {
-        return { status: 'SEMANTIC_ERROR', error: `Loop condition must compare two ANKHE types.` };
-    }
-
-    // Validate update (must use the loop variable)
-    const updatePart = parts[2];
-    const updateRegex = new RegExp(`^\\s*${loopVar}\\s*=\\s*${loopVar}\\s*([+\\-])\\s*1\\s*$`);
-    if (!updateRegex.test(updatePart)) {
-        return { status: 'SEMANTIC_ERROR', error: `Loop update must be of the form '${loopVar} = ${loopVar} + 1' or '- 1'.` };
-    }
-
-    // return VALID but do not declare the variable here
-    return { status: 'VALID', data: { variable: loopVar, type: 'ANKHE', value: Number(loopValue) } };
-}
-
-
 
     // central per-line processor: uses validators in order
     _processLine(line, lineNo) {
@@ -308,19 +305,18 @@
 
       for (const validator of validationOrder) {
         const result = validator(line);
-        if (!result) continue;
+        // If validator didn't apply, it will return a NOT_* status - continue
+        if (!result || (result.status && String(result.status).startsWith('NOT_'))) {
+          continue;
+        }
 
+        // VALID handling
         if (result.status === 'VALID') {
-          // Apply side-effects depending on validator used
-          if (validator === this._validateElaitheHeader.bind(this) || validator === this._validateElaitheHeader) {
-            // NOTE: can't reliably compare function objects after bind, so check by line prefix
-          }
-
-          // detect which validator was used by checking line content
+          // handle based on line content
           if (line.startsWith('ELAITHE')) {
             // open if scope and push a marker for if-block (1)
             this._enterScope();
-            this.bracketStack.push(1);
+            this.bracketStack.push({ type: 1, line: lineNo });
             return { status: 'ok' };
           } else if (line.startsWith('MALLI-MALLI')) {
             // enter loop scope, declare loop variable in that (temporary) scope
@@ -329,7 +325,7 @@
             if (!declareResult.success) {
               this.errors.push({ line: lineNo, message: declareResult.error });
             }
-            this.bracketStack.push(3); // loop marker
+            this.bracketStack.push({ type: 3, line: lineNo }); // loop marker with line
             return { status: 'ok' };
           } else if (line.startsWith(']')) {
             // block end handling
@@ -337,22 +333,19 @@
               this.errors.push({ line: lineNo, message: `Closing bracket ']' has no matching opening block.` });
               return { status: 'ok' };
             }
-            const btype = this.bracketStack[this.bracketStack.length - 1];
             const vd = result.data;
             if (vd && vd.type === 'end_with_else') {
               // end with else: pop the current block, exit its scope, then prepare else scope
-              // pop current block marker
               const popped = this.bracketStack.pop();
-              // exit the corresponding scope
               this._exitScope();
-              if (popped !== 1) {
+              if (!popped || popped.type !== 1) {
                 // must follow an ELAITHE (if)
                 this.errors.push({ line: lineNo, message: `'ALAITHE' must follow an 'ELAITHE' block.` });
                 return { status: 'ok' };
               }
               // start else scope
               this._enterScope();
-              this.bracketStack.push(2); // else marker
+              this.bracketStack.push({ type: 2, line: lineNo }); // else marker with originating line
               return { status: 'ok' };
             } else {
               // end only (normal close). exit current scope and pop one bracket marker
@@ -360,9 +353,9 @@
               this.bracketStack.pop();
               return { status: 'ok' };
             }
-          } else if (line.startsWith('PADAM ')) {
+          } else if (line.startsWith('PADAM')) {
             // declare variable in current scope
-            const declareResult = this._declare(result.data.variable, { type: result.data.type, value: result.data.value });
+            const declareResult = this._declare(result.data.variable, { type: result.data.type, value: result.data.value !== undefined ? (result.data.type === 'ANKHE' ? Number(result.data.value) : result.data.value.replace(/^"|"$/g, '')) : undefined });
             if (!declareResult.success) {
               this.errors.push({ line: lineNo, message: declareResult.error });
             }
@@ -399,7 +392,7 @@
                 } else {
                   // try to evaluate constant assignment (simple)
                   const trimmed = rhsExpr.trim();
-                  if (/^\d+$/.test(trimmed) && lhsInfo.type === 'ANKHE') {
+                  if (/^-?\d+$/.test(trimmed) && lhsInfo.type === 'ANKHE') {
                     lhsInfo.value = Number(trimmed);
                   } else if (/^"(?:\\.|[^"\\])*"$/.test(trimmed) && lhsInfo.type === 'VARTTAI') {
                     lhsInfo.value = trimmed.slice(1, -1);
@@ -432,15 +425,15 @@
           return { status: 'ok' };
         }
 
-        // else keep checking next validator
+        // else continue to next validator
       }
 
-      // If no validator matched
+      // If no validator produced a meaningful result (i.e., all returned NOT_*), then report unrecognized syntax
       this.errors.push({ line: lineNo, message: "Invalid or unrecognized syntax." });
       return { status: 'ok' };
     }
   }
-  
+
 
   // export to global
   global.YantraBhashaValidator = YantraBhashaValidator;
@@ -453,4 +446,3 @@ function validate(code) {
   // ensure code is a string and preserve empty input behavior
   return validator.validate(String(code || ""));
 }
-

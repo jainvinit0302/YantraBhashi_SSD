@@ -214,7 +214,8 @@ function runCode() {
 
   // Show validation results and variables immediately
   renderValidationResults(result.errors, result.warnings);
-  renderVariables(result.variables.map(([n, t]) => [n, t, result.variableValues?.[n]] || [n, t]));
+  // <<< FIXED: use validator's variables directly (triples [name,type,value]) >>>
+  renderVariables(result.variables);
   updateStats(code.split('\n').length, result.errors.length, result.warnings.length);
 
   // If there are validation errors, stop here and DO NOT show console outputs or run interpreter
@@ -280,6 +281,128 @@ sum = sum + i;
 CHATIMPU("Sum of first 10 numbers is:");
 CHATIMPU(sum);`
 };
+
+// ---------- quick automated tests for grader ----------
+// Replace your existing runAllTests() with this function
+function runAllTests() {
+  const tests = [
+    { name: 'Valid minimal', code: `PADAM x:ANKHE = 5;`, expectErrors: 0 },
+    { name: 'Undeclared use', code: `y = x + 2;`, expectErrors: 1 },
+    { name: 'Non-integer assignment', code: `PADAM x:ANKHE = 3.14;`, expectErrors: 1 },
+    { name: 'Missing bracket', code: `[ PADAM x:ANKHE = 5;`, expectErrors: 1 },
+    { name: 'Conditional with else', code:
+`PADAM username:VARTTAI = "Anirudh";
+ELAITHE ( username == "Anirudh" ) [
+CHATIMPU("Welcome Anirudh!");
+] ALAITHE [
+CHATIMPU("Access Denied!");
+]`, expectErrors: 0 },
+    { name: 'Loop example', code:
+`PADAM sum:ANKHE = 0;
+MALLI-MALLI ( PADAM i:ANKHE = 1; i <= 3; i = i + 1 ) [
+sum = sum + i;
+]
+CHATIMPU(sum);`, expectErrors: 0 }
+  ];
+
+  // Prepare Validation output area
+  const outputEl = document.getElementById('validationOutput');
+  outputEl.innerHTML = ''; // clear previous
+  const title = document.createElement('h3');
+  title.textContent = 'Automated Test Suite — Part 1 Validator';
+  outputEl.appendChild(title);
+
+  const description = document.createElement('div');
+  description.className = 'output-line info';
+  description.style.marginBottom = '8px';
+  description.textContent = 'This runs the standard 6 checks for the assignment: syntax, declaration-before-use, integer enforcement for ANKHE, bracket matching, conditionals, and loops.';
+  outputEl.appendChild(description);
+
+  // Show the actual testcases (collapsible)
+  const testList = document.createElement('div');
+  testList.className = 'testcases-list';
+  tests.forEach((t, idx) => {
+    const box = document.createElement('div');
+    box.className = 'testcase-box';
+    const header = document.createElement('div');
+    header.className = 'output-line';
+    header.textContent = `${idx + 1}. ${t.name}`;
+    header.style.fontWeight = '600';
+    box.appendChild(header);
+
+    const codePre = document.createElement('pre');
+    codePre.className = 'output-line info';
+    codePre.style.whiteSpace = 'pre-wrap';
+    codePre.style.background = '#f7f7f7';
+    codePre.style.padding = '8px';
+    codePre.style.borderRadius = '6px';
+    codePre.textContent = t.code;
+    box.appendChild(codePre);
+
+    testList.appendChild(box);
+  });
+  outputEl.appendChild(testList);
+
+  // Separator
+  const hr = document.createElement('hr');
+  hr.style.margin = '12px 0';
+  outputEl.appendChild(hr);
+
+  // Run tests and render results
+  const resultsContainer = document.createElement('div');
+  resultsContainer.className = 'test-results';
+  outputEl.appendChild(resultsContainer);
+
+  const results = [];
+  for (const t of tests) {
+    const res = validate(t.code);
+    const passed = (res.errors.length === t.expectErrors);
+    results.push({ name: t.name, passed, errors: res.errors });
+  }
+
+  // Summary
+  const failed = results.filter(r => !r.passed);
+  const summary = document.createElement('div');
+  summary.className = 'output-line';
+  summary.style.marginTop = '8px';
+  summary.innerHTML = `<strong>Summary:</strong> Ran ${results.length} tests — Passed: ${results.length - failed.length}, Failed: ${failed.length}`;
+  resultsContainer.appendChild(summary);
+
+  // Detailed results
+  results.forEach((r, idx) => {
+    const row = document.createElement('div');
+    row.className = 'output-line';
+    row.style.display = 'flex';
+    row.style.justifyContent = 'space-between';
+    row.style.alignItems = 'flex-start';
+    row.style.padding = '6px 0';
+
+    const left = document.createElement('div');
+    left.innerHTML = `<strong>${idx + 1}. ${r.name}</strong>`;
+    row.appendChild(left);
+
+    const right = document.createElement('div');
+    if (r.passed) {
+      right.innerHTML = `<span style="color:green">✓ Passed</span>`;
+    } else {
+      let sample = 'no errors reported';
+      if (r.errors && r.errors.length > 0) {
+        sample = `Line ${r.errors[0].line || '?'}: ${r.errors[0].message}`;
+      }
+      right.innerHTML = `<span style="color:red">✗ Failed</span><div style="font-size:0.9em;color:#333;margin-top:4px">${sample}</div>`;
+    }
+    row.appendChild(right);
+
+    resultsContainer.appendChild(row);
+  });
+
+  // Keep Validation tab open for grader visibility
+  switchTab('validation');
+  updateStatus(`Tests finished — ${results.length - failed.length}/${results.length} passed.`, failed.length > 0 ? 'warning' : 'success');
+
+  // Also return results object for any programmatic checks
+  return results;
+}
 
 // Init code (keeps behavior same as before)
 function init() {
